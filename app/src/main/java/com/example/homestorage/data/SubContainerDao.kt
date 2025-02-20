@@ -19,10 +19,10 @@ interface SubContainerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubContainers(subContainers: List<SubContainerEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(subContainer: SubContainerEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(subContainers: List<SubContainerEntity>)
 
     @Query("DELETE FROM subcontainers WHERE room = :room AND containerName = :containerName")

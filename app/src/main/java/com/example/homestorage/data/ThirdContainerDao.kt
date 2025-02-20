@@ -27,10 +27,10 @@ interface ThirdContainerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertThirdContainers(thirdContainers: List<ThirdContainerEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(thirdContainer: ThirdContainerEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(thirdContainers: List<ThirdContainerEntity>)
 
     @Query("""

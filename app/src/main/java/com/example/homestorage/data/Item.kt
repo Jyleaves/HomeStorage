@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "items",
-//    indices = [Index(value=["name", "room", "container", "subContainer", "thirdContainer", "category"], unique=true)]
+    indices = [Index(value=["timestamp"], unique=true)]
 )
 data class Item(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
