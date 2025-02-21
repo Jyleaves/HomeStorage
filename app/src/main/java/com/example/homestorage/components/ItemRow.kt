@@ -1,14 +1,21 @@
 package com.example.homestorage.components
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.ExperimentalMaterialApi
+//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.DismissDirection
+//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.DismissValue
+//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.Icon
+//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.SwipeToDismiss
+//noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.rememberDismissState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -27,12 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.homestorage.data.Item
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ItemRow(
@@ -88,8 +94,8 @@ fun ItemRow(
                 )
             }
         },
+        // 修改后的 dismissContent 部分
         dismissContent = {
-            // 内容区域可点击，点击后进入编辑页面等
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -104,10 +110,26 @@ fun ItemRow(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(text = item.name, style = MaterialTheme.typography.titleMedium)
-                        Text(text = "房间: ${item.room}", style = MaterialTheme.typography.bodyMedium)
-                        Text(text = "容器: ${item.container}", style = MaterialTheme.typography.bodyMedium)
-                        Text(text = "类别: ${item.category}", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = item.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1 // 名称保持单行
+                        )
+
+                        val location = listOf(
+                            item.room,
+                            item.container,
+                            item.subContainer,
+                            item.thirdContainer
+                        ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
+
+                        // 位置信息允许换行（关键修改）
+                        Text(
+                            text = "位置: $location",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth(), // 确保换行可用空间
+                            maxLines = 2 // 最多显示两行（可根据需要调整）
+                        )
                     }
                 }
             }

@@ -841,6 +841,7 @@ fun ItemFormScreen(
                         OutlinedTextField(
                             value = name,
                             onValueChange = { if (canEditName) name = it },
+                            readOnly = !canEditName,
                             label = { Text("物品名称") },
                             modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
@@ -916,6 +917,7 @@ fun ItemFormScreen(
                             OutlinedTextField(
                                 value = reminderDaysStr,
                                 onValueChange = { if (canEditReminderDays) reminderDaysStr = it },
+                                readOnly = !canEditName,
                                 label = { Text("提醒期限（天）") },
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -926,6 +928,7 @@ fun ItemFormScreen(
                             OutlinedTextField(
                                 value = quantityStr,
                                 onValueChange = { if (canEditQuantity) quantityStr = it },
+                                readOnly = !canEditName,
                                 label = { Text("数量") },
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
