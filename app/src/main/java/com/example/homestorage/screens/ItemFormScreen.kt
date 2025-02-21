@@ -431,6 +431,26 @@ fun ItemFormScreen(
                             if (selectedItemCategory?.needReminder == true && reminderDaysStr.isNotBlank())
                                 reminderDaysStr.toLongOrNull() else null
 
+                        existingItem?.photoUri?.let { oldUri ->
+                            try {
+                                Uri.parse(oldUri).path?.let { path ->
+                                    File(path)
+                                        .takeIf { it.exists() && it.isFile && it.canWrite() }
+                                        ?.delete()
+                                        ?.also { deleted ->
+                                            if (deleted) {
+                                                Log.d("Photo", "旧照片删除成功: $path")
+                                            } else {
+                                                Log.w("Photo", "旧照片删除失败（文件存在但无法删除）: $path")
+                                            }
+                                        }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Photo", "删除旧照片时出现异常", e)
+                                Toast.makeText(context, "旧照片清理失败，可能会产生冗余文件", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+
                         if (name.isNotBlank() && room.isNotBlank() &&
                             container.isNotBlank() && category.isNotBlank() && photoUri != null
                         ) {

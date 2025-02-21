@@ -27,6 +27,7 @@ class UCropContract : ActivityResultContract<Pair<Uri, Uri>, Uri?>() {
         val options = UCrop.Options().apply {
             setFreeStyleCropEnabled(true)
             setCompressionFormat(Bitmap.CompressFormat.JPEG)
+            setCompressionQuality(40)
         }
 
         return UCrop.of(sourceUri, destinationUri)

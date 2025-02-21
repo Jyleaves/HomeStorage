@@ -1,6 +1,7 @@
 package com.example.homestorage.viewmodel
 
 import android.app.Application
+import com.example.homestorage.util.deletePhotoFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.homestorage.data.AppDatabase
@@ -11,6 +12,7 @@ import kotlinx.coroutines.launch
 
 class ItemViewModel(application: Application) : AndroidViewModel(application) {
     private val itemDao = AppDatabase.getDatabase(application).itemDao()
+    private val appContext = application.applicationContext
 
     // 将 Flow 转为 StateFlow 以便在 Compose 中观察
     val allItems = itemDao.getAllItems().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -23,6 +25,9 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
 
     fun delete(item: Item) {
         viewModelScope.launch {
+            // 先删除照片文件
+            deletePhotoFile(appContext, item.photoUri)
+            // 再删除数据库记录
             itemDao.delete(item)
         }
     }
