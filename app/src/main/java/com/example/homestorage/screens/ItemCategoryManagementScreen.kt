@@ -1,24 +1,39 @@
 package com.example.homestorage.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.DismissDirection
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.DismissValue
+import androidx.compose.material.ExperimentalMaterialApi
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.rememberDismissState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.homestorage.data.ItemCategory
 import com.example.homestorage.viewmodel.ItemCategoryViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class,
+    ExperimentalMaterialApi::class
+)
 @Composable
 fun ItemCategoryManagementScreen(
     navController: NavController,
@@ -69,42 +84,66 @@ fun ItemCategoryManagementScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(categories) { cat ->
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(cat.categoryName, style = MaterialTheme.typography.titleMedium)
-                                Row {
-                                    // 编辑按钮
-                                    IconButton(onClick = {
-                                        // 进入编辑模式
-                                        navController.navigate("item_category_form?categoryNameToEdit=${cat.categoryName}")
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = "编辑类别"
-                                        )
-                                    }
-                                    // 删除按钮
-                                    IconButton(onClick = {
-                                        categoryToDelete = cat
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "删除类别",
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
+                        val dismissState = rememberDismissState(
+                            confirmStateChange = { dismissValue ->
+                                if (dismissValue == DismissValue.DismissedToStart) {
+                                    categoryToDelete = cat
+                                    false // 返回 false 来阻止删除后立刻移除内容
+                                } else false
+                            }
+                        )
+
+                        SwipeToDismiss(
+                            state = dismissState,
+                            directions = setOf(DismissDirection.EndToStart),
+                            background = {
+                                val color = if (dismissState.targetValue == DismissValue.Default) {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.errorContainer
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .background(color)
+                                        .padding(end = 20.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    val scale by animateFloatAsState(
+                                        targetValue = if (dismissState.targetValue == DismissValue.Default) 0.75f else 1f
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "删除",
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.scale(scale)
+                                    )
+                                }
+                            },
+                            dismissContent = {
+                                // 保留卡片内容，点击进入编辑
+                                ElevatedCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            // 传递物品类别名称参数进入编辑界面
+                                            navController.navigate("item_category_form?categoryNameToEdit=${cat.categoryName}")
+                                        },
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(cat.categoryName, style = MaterialTheme.typography.titleMedium)
                                     }
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
