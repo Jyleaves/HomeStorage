@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.homestorage"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -83,6 +83,8 @@ dependencies {
 
     implementation(libs.ucrop.v226)
     implementation(libs.text.recognition.chinese)
+
+    implementation(libs.google.accompanist.systemuicontroller)
 
     // 测试依赖
     testImplementation(libs.junit)

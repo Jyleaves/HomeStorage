@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,14 +27,16 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -53,6 +56,7 @@ import com.example.homestorage.viewmodel.ItemViewModel
 import com.example.homestorage.viewmodel.RoomViewModel
 import com.example.homestorage.viewmodel.SubContainerViewModel
 import com.example.homestorage.viewmodel.ThirdContainerViewModel
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.flow.first
@@ -238,32 +242,61 @@ fun ItemFormScreen(
     // 大图预览弹窗
     var showLargeImageDialog by remember { mutableStateOf(false) }
     if (showLargeImageDialog && photoUri != null) {
-        Dialog(onDismissRequest = { showLargeImageDialog = false }) {
-            Box(
+        val systemUiController = rememberSystemUiController()
+        SideEffect {
+            systemUiController.isSystemBarsVisible = false // 隐藏状态栏和导航栏
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(999f)
+                .background(Color.Black)
+                .clickable {  // 新增背景点击监听
+                    showLargeImageDialog = false
+                    systemUiController.isSystemBarsVisible = true
+                }
+        ) {
+            var scale by remember { mutableFloatStateOf(1f) }
+            var offset by remember { mutableStateOf(Offset.Zero) }
+
+            AsyncImage(
+                model = photoUri,
+                contentDescription = "大图预览",
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
+                    .pointerInput(Unit) {
+                        detectTransformGestures(
+                            onGesture = { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                offset += pan
+                            }
+                        )
+                    }
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    },
+                contentScale = ContentScale.Fit
+            )
+
+            // 返回按钮
+            IconButton(
+                onClick = {
+                    showLargeImageDialog = false
+                    systemUiController.isSystemBarsVisible = true // 恢复系统栏
+                },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
             ) {
-                AsyncImage(
-                    model = photoUri,
-                    contentDescription = "大图预览",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { showLargeImageDialog = false },
-                    contentScale = ContentScale.Fit
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "关闭预览",
+                    tint = Color.White
                 )
-                IconButton(
-                    onClick = { showLargeImageDialog = false },
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "关闭预览",
-                        tint = Color.White
-                    )
-                }
             }
         }
     }
