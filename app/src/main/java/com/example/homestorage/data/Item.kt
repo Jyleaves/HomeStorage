@@ -1,3 +1,4 @@
+// Item.kt
 package com.example.homestorage.data
 
 import androidx.room.Entity
@@ -23,4 +24,13 @@ data class Item(
     val quantity: Int? = null,             // 数量
     val timestamp: Long = System.currentTimeMillis(),
     val expirationDate: Long? = null
-)
+) {
+    fun getFullLocation(): String {
+        return listOfNotNull(
+            room.takeIf { it.isNotEmpty() },
+            container.takeIf { it.isNotEmpty() },
+            subContainer?.takeIf { it.isNotEmpty() },
+            thirdContainer?.takeIf { it.isNotEmpty() }
+        ).joinToString(" > ")
+    }
+}

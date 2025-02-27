@@ -1,21 +1,30 @@
+// ItemViewModel.kt
 package com.example.homestorage.viewmodel
 
 import android.app.Application
+import android.widget.Toast
 import com.example.homestorage.util.deletePhotoFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.homestorage.data.AppDatabase
 import com.example.homestorage.data.Item
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ItemViewModel(application: Application) : AndroidViewModel(application) {
     private val itemDao = AppDatabase.getDatabase(application).itemDao()
     private val appContext = application.applicationContext
 
     // 将 Flow 转为 StateFlow 以便在 Compose 中观察
-    val allItems = itemDao.getAllItems().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val allItems = itemDao.getAllItems()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     fun insert(item: Item) {
         viewModelScope.launch {
@@ -56,6 +65,37 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             itemDao.updateSubContainerNameForItems(room, container, oldSubContainer, newSubContainer)
+        }
+    }
+
+    fun updateItems(items: List<Item>) {
+        viewModelScope.launch {
+            itemDao.updateItems(items)
+        }
+    }
+
+    fun deleteItems(items: List<Item>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 获取要删除的ID列表
+            val itemIds = items.map { it.id }
+            val photoUris = items.map { it.photoUri }
+
+            // 批量删除数据库记录
+            itemDao.deleteBatch(itemIds)
+
+            // 批量删除照片文件
+            photoUris.forEach { uri ->
+                deletePhotoFile(appContext, uri)
+            }
+
+            // 在主线程显示结果
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    appContext,
+                    "已删除 ${items.size} 件物品",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 

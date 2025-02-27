@@ -1,5 +1,7 @@
 package com.example.homestorage.navigation
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -10,6 +12,7 @@ import com.example.homestorage.screens.AddContainerScreen
 import com.example.homestorage.screens.AddRoomScreen
 import com.example.homestorage.screens.AddSubContainerScreen
 import com.example.homestorage.screens.AddThirdContainerScreen
+import com.example.homestorage.screens.BatchEditScreen
 import com.example.homestorage.screens.ContainerScreen
 import com.example.homestorage.screens.ExportImportScreen
 import com.example.homestorage.screens.HomeScreen
@@ -43,6 +46,9 @@ sealed class Screen(val route: String) {
                     "&defaultThirdContainer=$defaultThirdContainer"
         }
     }
+    data object BatchEdit : Screen("batch_edit/{location}/{ids}") {
+        fun createRoute(location: String, ids: String) = "batch_edit/$location/$ids"
+    }
     data object AddRoom : Screen("add_room?roomName={roomName}") {
         fun createRoute(roomName: String? = null): String =
             if (!roomName.isNullOrBlank()) "add_room?roomName=$roomName" else "add_room"
@@ -70,6 +76,7 @@ sealed class Screen(val route: String) {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -108,6 +115,22 @@ fun AppNavigation() {
                 defaultCategory = defaultCategory,
                 defaultSubContainer = defaultSubContainer,
                 defaultThirdContainer = defaultThirdContainer,
+            )
+        }
+        composable(
+            route = Screen.BatchEdit.route,
+            arguments = listOf(
+                navArgument("location") { type = NavType.StringType }, // 位置参数
+                navArgument("ids") { type = NavType.StringType }        // ID列表
+            )
+        ) { backStackEntry ->
+            val location = backStackEntry.arguments?.getString("location") ?: ""
+            val ids = backStackEntry.arguments?.getString("ids") ?: ""
+
+            BatchEditScreen(
+                navController = navController,
+                location = location,
+                ids = ids
             )
         }
         composable(

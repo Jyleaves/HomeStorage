@@ -1,3 +1,4 @@
+// ItemRow.kt
 package com.example.homestorage.components
 
 import android.os.Build
@@ -5,7 +6,10 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.Checkbox
 import androidx.compose.material.ExperimentalMaterialApi
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.DismissDirection
@@ -34,16 +38,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
 @RequiresApi(Build.VERSION_CODES.O)
-@OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun ItemRow(
     item: com.example.homestorage.data.Item,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     // 控制是否显示确认删除弹窗
@@ -63,78 +72,164 @@ fun ItemRow(
         }
     )
 
-    SwipeToDismiss(
-        state = dismissState,
-        directions = setOf(DismissDirection.EndToStart),
-        background = {
-            // 根据滑动进度设置背景色：
-            // 默认状态使用 surfaceVariant，达到删除状态时使用 errorContainer
-            val color = if (dismissState.targetValue == DismissValue.Default) {
-                MaterialTheme.colorScheme.surfaceVariant
-            } else {
-                MaterialTheme.colorScheme.errorContainer
-            }
-            Box(
+    val pointerModifier = Modifier.pointerInput(Unit) {
+        detectTapGestures(
+            onLongPress = { onLongClick() },
+            onTap = { onClick() }
+        )
+    }
+
+    if (isSelectionMode) {
+        // 将复选框放置在左侧，并且不与物品的背景混合
+        Row(
+            modifier = Modifier.fillMaxWidth().then(pointerModifier),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onClick() },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .clip(MaterialTheme.shapes.medium) // 圆角背景
-                    .background(color)
-                    .padding(end = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                // 通过动画调整删除图标的缩放
-                val scale by animateFloatAsState(
-                    targetValue = if (dismissState.targetValue == DismissValue.Default) 0.75f else 1f
-                )
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.scale(scale)
-                )
-            }
-        },
-        // 修改后的 dismissContent 部分
-        dismissContent = {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick() }
-            ) {
-                Row(modifier = Modifier.padding(8.dp)) {
-                    AsyncImage(
-                        model = item.photoUri,
-                        contentDescription = item.name,
-                        modifier = Modifier.size(80.dp),
-                        contentScale = ContentScale.Crop
+                    .size(40.dp)
+                    .padding(start = 8.dp) // 给复选框一点内边距
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            // 物品内容
+            SwipeToDismiss(
+                state = dismissState,
+                directions = setOf(DismissDirection.EndToStart),
+                background = {
+                    // 默认状态使用 surfaceVariant，达到删除状态时使用 errorContainer
+                    val color = if (dismissState.targetValue == DismissValue.Default) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(MaterialTheme.shapes.medium) // 圆角背景
+                            .background(color)
+                            .padding(end = 60.dp),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        // 通过动画调整删除图标的缩放
+                        val scale by animateFloatAsState(
+                            targetValue = if (dismissState.targetValue == DismissValue.Default) 0.75f else 1f
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.scale(scale)
+                        )
+                    }
+                },
+                dismissContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.padding(8.dp)) {
+                                AsyncImage(
+                                    model = item.photoUri,
+                                    contentDescription = item.name,
+                                    modifier = Modifier.size(80.dp),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = item.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1
+                                    )
+                                    val location = listOf(
+                                        item.room,
+                                        item.container,
+                                        item.subContainer,
+                                        item.thirdContainer
+                                    ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
+                                    Text(
+                                        text = "位置: $location",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxLines = 2
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    } else {
+        // 物品内容直接显示
+        SwipeToDismiss(
+            state = dismissState,
+            directions = setOf(DismissDirection.EndToStart),
+            background = {
+                val color = if (dismissState.targetValue == DismissValue.Default) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.errorContainer
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(MaterialTheme.shapes.medium) // 圆角背景
+                        .background(color)
+                        .padding(end = 60.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    val scale by animateFloatAsState(
+                        targetValue = if (dismissState.targetValue == DismissValue.Default) 0.75f else 1f
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = item.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1 // 名称保持单行
-                        )
-
-                        val location = listOf(
-                            item.room,
-                            item.container,
-                            item.subContainer,
-                            item.thirdContainer
-                        ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
-
-                        // 位置信息允许换行（关键修改）
-                        Text(
-                            text = "位置: $location",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.fillMaxWidth(), // 确保换行可用空间
-                            maxLines = 2 // 最多显示两行（可根据需要调整）
-                        )
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "删除",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.scale(scale)
+                    )
+                }
+            },
+            dismissContent = {
+                Row(
+                    modifier = Modifier.fillMaxWidth().then(pointerModifier)
+                ) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(8.dp)) {
+                            AsyncImage(
+                                model = item.photoUri,
+                                contentDescription = item.name,
+                                modifier = Modifier.size(80.dp),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = item.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1
+                                )
+                                val location = listOf(
+                                    item.room,
+                                    item.container,
+                                    item.subContainer,
+                                    item.thirdContainer
+                                ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
+                                Text(
+                                    text = "位置: $location",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    maxLines = 2
+                                )
+                            }
+                        }
                     }
                 }
             }
-        }
-    )
+        )
+    }
 
     // 显示删除确认弹窗
     if (showConfirmDialog) {

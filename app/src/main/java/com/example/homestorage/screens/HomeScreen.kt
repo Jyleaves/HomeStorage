@@ -1,5 +1,9 @@
+// HomeScreen.kt
 package com.example.homestorage.screens
 
+import android.os.Build
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +17,8 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
@@ -20,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -33,7 +40,9 @@ import com.example.homestorage.viewmodel.RoomViewModel
 import com.example.homestorage.viewmodel.ContainerViewModel
 import com.example.homestorage.data.ContainerEntity
 import com.example.homestorage.components.ItemRow
+import com.example.homestorage.data.Item
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -65,6 +74,53 @@ fun HomeScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
 
+    var isSelectionMode by remember { mutableStateOf(false) } // 是否处于多选模式
+    val selectedItems = remember { mutableStateListOf<Item>() } // 已选中的物品集合
+    var selectedLocation by remember { mutableStateOf("") } // 当前选中物品的统一位置
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // 点击时更新选择模式的状态
+    val onClick = { item: Item ->
+        if (isSelectionMode) {
+            if (item in selectedItems) {
+                selectedItems.remove(item)
+                isSelectionMode = !selectedItems.isEmpty()
+            } else {
+                selectedItems.add(item)
+            }
+        } else {
+            navController.navigate(Screen.ItemForm.createRoute(item.id))
+        }
+    }
+
+    // 新增上下文获取
+    val context = LocalContext.current
+
+    // 将处理函数定义为普通函数
+    fun handleBatchEdit() {
+        if (selectedItems.isNotEmpty()) {
+            val allSameLocation = selectedItems.all {
+                it.getFullLocation() == selectedLocation
+            }
+
+            if (allSameLocation) {
+                navController.navigate(
+                    Screen.BatchEdit.createRoute(
+                        selectedLocation,
+                        selectedItems.joinToString(",") { it.id.toString() }
+                    )
+                )
+                selectedItems.clear()
+            } else {
+                Toast.makeText(
+                    context, // 使用外部获取的context
+                    "只能编辑相同位置的物品",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,6 +131,29 @@ fun HomeScreen(
                     }
                 }
             )
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = { Text("已选择${selectedItems.size}项") },
+                    actions = {
+                        IconButton(onClick = { handleBatchEdit() }) {
+                            Icon(Icons.Default.Edit, "批量编辑")
+                        }
+                        IconButton(onClick = {
+                            if (selectedItems.isNotEmpty()) {
+                                showDeleteConfirm = true
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, "批量删除")
+                        }
+                        IconButton(onClick = {
+                            selectedItems.clear()
+                            isSelectionMode = false
+                        }) {
+                            Icon(Icons.Default.Close, "取消选择")
+                        }
+                    }
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
@@ -214,8 +293,23 @@ fun HomeScreen(
                             items(displayedItems) { item ->
                                 ItemRow(
                                     item = item,
-                                    onClick = {
-                                        navController.navigate(Screen.ItemForm.createRoute(item.id))
+                                    isSelected = selectedItems.contains(item),
+                                    isSelectionMode = isSelectionMode,
+                                    onClick = { onClick(item) },
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            selectedLocation = item.getFullLocation() // 需要给Item添加获取完整位置的方法
+                                            isSelectionMode = true
+                                        }
+                                        // 判断位置是否一致
+                                        if (item.getFullLocation() == selectedLocation) {
+                                            if (selectedItems.contains(item)) {
+                                                selectedItems.remove(item)
+                                            } else {
+                                                selectedItems.add(item)
+                                            }
+                                            if (selectedItems.isEmpty()) isSelectionMode = false
+                                        }
                                     },
                                     onDelete = {
                                         itemViewModel.delete(item)
@@ -296,6 +390,54 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
                     Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = {
+                Text(
+                    text = "确认删除",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            },
+            text = {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text("确定要永久删除选中的 ${selectedItems.size} 项物品吗？")
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "包含物品：${
+                            selectedItems.take(3).joinToString { it.name }}${
+                            if (selectedItems.size > 3) " 等..."
+                            else ""
+                        }",
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        // 先保存要删除的列表副本
+                        val itemsToDelete = selectedItems.toList()
+                        // 立即清空选择状态
+                        selectedItems.clear()
+                        isSelectionMode = false
+                        // 执行删除操作（传递副本）
+                        itemViewModel.deleteItems(itemsToDelete)
+                    }
+                ) {
+                    Text("确定删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消", color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         )

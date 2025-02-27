@@ -1,3 +1,4 @@
+// ItemDao.kt
 package com.example.homestorage.data
 
 import androidx.room.*
@@ -16,6 +17,10 @@ interface ItemDao {
 
     @Delete
     suspend fun delete(item: Item)
+
+    @Transaction // 确保原子操作
+    @Query("DELETE FROM items WHERE id IN (:itemIds)")
+    suspend fun deleteBatch(itemIds: List<Int>)
 
     @Query("DELETE FROM items")
     suspend fun deleteAll()
