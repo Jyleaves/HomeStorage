@@ -2,15 +2,17 @@
 package com.example.homestorage.screens
 
 import android.Manifest
-import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileCopy
@@ -40,8 +43,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -61,13 +62,16 @@ import com.example.homestorage.viewmodel.RoomViewModel
 import com.example.homestorage.viewmodel.SubContainerViewModel
 import com.example.homestorage.viewmodel.ThirdContainerViewModel
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
-import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ItemFormScreen(
@@ -111,8 +115,10 @@ fun ItemFormScreen(
     var reminderDays by remember { mutableStateOf<Long?>(null) }
     var reminderDaysStr by remember { mutableStateOf("") }
     var expirationDate by remember { mutableStateOf<Long?>(null) }
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
-    val expirationDateStr = expirationDate?.let { dateFormat.format(Date(it)) } ?: ""
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.getDefault())
+    }
+    val expirationDateStr = expirationDate?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(dateFormatter) } ?: ""
     var quantityStr by remember { mutableStateOf("") }
 
     // 选中的物品类别（包含属性定义）
@@ -139,7 +145,9 @@ fun ItemFormScreen(
                 description = it.description
                 photoUri = Uri.parse(it.photoUri)
                 productionDate = it.productionDate
-                productionDateStr = it.productionDate?.let { dateFormat.format(Date(it)) } ?: ""
+                productionDateStr = productionDate?.let {
+                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(dateFormatter)
+                } ?: ""
                 reminderDays = it.reminderDays
                 reminderDaysStr = it.reminderDays?.toString() ?: ""
                 expirationDate = it.expirationDate
@@ -213,34 +221,57 @@ fun ItemFormScreen(
     val canEditExpirationDate = if (isEditScreen) isEditing else true
     val canEditQuantity = if (isEditScreen) isEditing else true
 
-    // 日期选择对话框（生产日期）
-    val productionDateDialog = remember {
+    // 生产日期选择状态
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = productionDate ?: System.currentTimeMillis(),
+        yearRange = (Calendar.getInstance().get(Calendar.YEAR) - 100)..Calendar.getInstance().get(Calendar.YEAR) // 限制100年内
+    )
+
+    // 有效期选择状态
+    var showExpirationDatePicker by remember { mutableStateOf(false) }
+    val expirationDatePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = expirationDate ?: System.currentTimeMillis(),
+        yearRange = Calendar.getInstance().get(Calendar.YEAR)..(Calendar.getInstance().get(Calendar.YEAR) + 100) // 限制未来100年
+    )
+
+    // 生产日期对话框
+    if (showDatePicker) {
         DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val cal = Calendar.getInstance()
-                cal.set(year, month, dayOfMonth, 0, 0, 0)
-                productionDate = cal.timeInMillis
-                productionDateStr = dateFormat.format(Date(cal.timeInMillis))
-            },
-            Calendar.getInstance().get(Calendar.YEAR),
-            Calendar.getInstance().get(Calendar.MONTH),
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        )
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let {
+                            productionDate = it
+                            productionDateStr = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(dateFormatter)
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("确认") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
-    // 日期选择对话框（有效期）
-    val expirationDateDialog = remember {
+
+    // 有效期对话框
+    if (showExpirationDatePicker) {
         DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val cal = Calendar.getInstance()
-                cal.set(year, month, dayOfMonth, 0, 0, 0)
-                expirationDate = cal.timeInMillis
-            },
-            Calendar.getInstance().get(Calendar.YEAR),
-            Calendar.getInstance().get(Calendar.MONTH),
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        )
+            onDismissRequest = { showExpirationDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        expirationDatePickerState.selectedDateMillis?.let {
+                            expirationDate = it
+                        }
+                        showExpirationDatePicker = false
+                    }
+                ) { Text("确认") }
+            }
+        ) {
+            DatePicker(state = expirationDatePickerState)
+        }
     }
 
     // 大图预览弹窗
@@ -305,23 +336,35 @@ fun ItemFormScreen(
         }
     }
 
-    // 相册选择
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            photoUri = uri
-        }
-    }
-    // 拍照
-    var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
-
     val imageCropLauncher = rememberLauncherForActivityResult(contract = UCropContract()) { croppedUri ->
         if (croppedUri != null) {
             // 附加唯一参数，避免缓存问题
             photoUri = Uri.parse("${croppedUri}?t=${System.currentTimeMillis()}")
         }
     }
+
+    val isPhotoPickerAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU // API 33
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            val destinationUri = createDestinationUri(context)
+            imageCropLauncher.launch(Pair(it, destinationUri))
+        }
+    }
+
+    // 相册选择
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        result.data?.data?.let { uri ->
+            val destinationUri = createDestinationUri(context)
+            imageCropLauncher.launch(Pair(uri, destinationUri))
+        }
+    }
+
+    // 拍照
+    var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -368,7 +411,19 @@ fun ItemFormScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showImageSourceDialog = false
-                    galleryLauncher.launch("image/*")
+                    if (isPhotoPickerAvailable) {
+                        // 使用 Photo Picker（支持 Android 13+）
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    } else {
+                        // 回退到传统相册（Android 12 及以下）
+                        val intent = Intent(Intent.ACTION_PICK).apply {
+                            type = "image/*"
+                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        }
+                        galleryLauncher.launch(intent)
+                    }
                 }) { Text("相册") }
             },
             dismissButton = {
@@ -479,7 +534,7 @@ fun ItemFormScreen(
                             )
                         }) {
                             Icon(
-                                imageVector = Icons.Default.FileCopy, // 或者选择你喜欢的图标
+                                imageVector = Icons.Default.FileCopy,
                                 contentDescription = "另存为新物品"
                             )
                         }
@@ -490,7 +545,7 @@ fun ItemFormScreen(
         floatingActionButton = {
             if (isEditing) {
                 ExtendedFloatingActionButton(
-                    text = { Text("保存") },
+                    text = { Text(if (isEditScreen) "保存" else "添加") },
                     onClick = {
                         // 保存前解析提醒天数字符串（仅当该类别需要提醒时）
                         reminderDays =
@@ -542,7 +597,11 @@ fun ItemFormScreen(
                                 expirationDate = expirationDate
                             )
                             itemViewModel.insert(newItem)
-                            navController.popBackStack()
+                            if (isEditScreen) {
+                                Toast.makeText(context, "物品保存成功", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "物品添加成功", Toast.LENGTH_SHORT).show()
+                            }
                         } else {
                             Toast.makeText(
                                 context,
@@ -553,7 +612,7 @@ fun ItemFormScreen(
                     },
                     icon = {
                         Icon(
-                            imageVector = Icons.Default.Edit,
+                            imageVector = if (isEditScreen) Icons.Default.Edit else Icons.Default.Add,
                             contentDescription = null
                         )
                     },
@@ -967,7 +1026,7 @@ fun ItemFormScreen(
                                         label = "生产日期",
                                         dateStr = productionDateStr,
                                         onClick = {
-                                            if (canEditProductionDate) productionDateDialog.show()
+                                            if (canEditProductionDate) showDatePicker = true
                                         }
                                     )
                                 }
@@ -976,7 +1035,7 @@ fun ItemFormScreen(
                                         label = "有效期",
                                         dateStr = expirationDateStr,
                                         onClick = {
-                                            if (canEditExpirationDate) expirationDateDialog.show()
+                                            if (canEditExpirationDate) showDatePicker = true
                                         }
                                     )
                                 }
@@ -987,7 +1046,7 @@ fun ItemFormScreen(
                                 label = "生产日期",
                                 dateStr = productionDateStr,
                                 onClick = {
-                                    if (canEditProductionDate) productionDateDialog.show()
+                                    if (canEditProductionDate) showDatePicker = true
                                 }
                             )
                         } else if (selectedItemCategory?.needExpirationDate == true) {
@@ -996,7 +1055,7 @@ fun ItemFormScreen(
                                 label = "有效期",
                                 dateStr = expirationDateStr,
                                 onClick = {
-                                    if (canEditExpirationDate) expirationDateDialog.show()
+                                    if (canEditExpirationDate) showDatePicker = true
                                 }
                             )
                         }
@@ -1118,7 +1177,7 @@ fun saveAsNewItem(
             thirdContainer = thirdContainer,
             category = category,
             description = description,
-            photoUri = newPhotoUriString ?: "",
+            photoUri = newPhotoUriString,
             timestamp = System.currentTimeMillis(),
             productionDate = productionDate,
             reminderDays = reminderDays,
