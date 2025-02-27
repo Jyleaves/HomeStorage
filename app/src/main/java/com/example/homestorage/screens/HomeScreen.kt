@@ -2,6 +2,7 @@
 package com.example.homestorage.screens
 
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -89,7 +90,12 @@ fun HomeScreen(
                 selectedItems.add(item)
             }
         } else {
-            navController.navigate(Screen.ItemForm.createRoute(item.id))
+            navController.navigate(Screen.ItemForm.createRoute(item.id)) {
+                launchSingleTop = true
+                popUpTo(Screen.Home.route) { saveState = false }
+            }
+            val itemId = item.id
+            Log.d("ItemFormScreen", "Editing item with id: $itemId")
         }
     }
 
@@ -290,7 +296,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(displayedItems) { item ->
+                            items(displayedItems, key = { it.id }) { item ->
                                 ItemRow(
                                     item = item,
                                     isSelected = selectedItems.contains(item),
@@ -313,6 +319,9 @@ fun HomeScreen(
                                     },
                                     onDelete = {
                                         itemViewModel.delete(item)
+                                        itemViewModel.allItems.value.forEach {
+                                            Log.d("ItemViewModel", "Existing item id: ${it.id}")
+                                        }
                                     }
                                 )
                             }

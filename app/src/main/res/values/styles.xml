@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="CustomUCropTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <!-- 禁用系统导航栏透明 -->
+        <item name="android:windowTranslucentNavigation">false</item>
+        <!-- 让内容适配系统窗口 -->
+        <item name="android:fitsSystemWindows">true</item>
+    </style>
+</resources>

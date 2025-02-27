@@ -9,11 +9,14 @@ interface ItemDao {
     @Query("SELECT * FROM items ORDER BY timestamp DESC")
     fun getAllItems(): Flow<List<Item>>
 
+    @Query("SELECT * FROM items WHERE id = :itemId LIMIT 1")
+    suspend fun getItemById(itemId: Int): Item?
+
     @Query("SELECT * FROM items WHERE expirationDate IS NOT NULL AND expirationDate <= :time")
     suspend fun getItemsExpiringBefore(time: Long): List<Item>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(item: Item)
+    suspend fun insert(item: Item): Long
 
     @Delete
     suspend fun delete(item: Item)

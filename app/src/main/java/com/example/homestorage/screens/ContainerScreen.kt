@@ -394,7 +394,7 @@ fun ContainerScreen(
                     contentPadding = PaddingValues(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredItems) { item ->
+                    items(filteredItems, key = { it.id }) { item ->
                         ItemRow(
                             item = item,
                             isSelected = selectedItems.contains(item),

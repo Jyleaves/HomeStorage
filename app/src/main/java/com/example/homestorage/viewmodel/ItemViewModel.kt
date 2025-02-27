@@ -2,6 +2,7 @@
 package com.example.homestorage.viewmodel
 
 import android.app.Application
+import android.util.Log
 import android.widget.Toast
 import com.example.homestorage.util.deletePhotoFile
 import androidx.lifecycle.AndroidViewModel
@@ -26,9 +27,14 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    suspend fun getItemById(itemId: Int): Item? {
+        return itemDao.getItemById(itemId)
+    }
+
     fun insert(item: Item) {
         viewModelScope.launch {
-            itemDao.insert(item)
+            val newId = itemDao.insert(item) // 如果 insert 返回 Long，则记录它
+            Log.d("ItemViewModel", "Inserted new item with id: $newId")
         }
     }
 

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +40,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -123,48 +126,48 @@ fun ItemFormScreen(
     var selectedThirdContainer by remember { mutableStateOf<ThirdContainerEntity?>(null) }
 
     // 编辑模式下预填数据
-    LaunchedEffect(existingItem) {
-        existingItem?.let { item ->
-            name = item.name
-            room = item.room
-            container = item.container
-            subContainer = item.subContainer ?: ""
-            thirdContainer = item.thirdContainer ?: ""
-            category = item.category
-            description = item.description
-            photoUri = Uri.parse(item.photoUri)
-            productionDate = item.productionDate
-            productionDateStr = item.productionDate?.let { dateFormat.format(Date(it)) } ?: ""
-            reminderDays = item.reminderDays
-            reminderDaysStr = item.reminderDays?.toString() ?: ""
-            expirationDate = item.expirationDate
-            quantityStr = item.quantity?.toString() ?: ""
+    LaunchedEffect(itemId) {
+        if (itemId != 0) {
+            val item = itemViewModel.getItemById(itemId)
+            item?.let {
+                name = it.name
+                room = it.room
+                container = it.container
+                subContainer = it.subContainer ?: ""
+                thirdContainer = it.thirdContainer ?: ""
+                category = it.category
+                description = it.description
+                photoUri = Uri.parse(it.photoUri)
+                productionDate = it.productionDate
+                productionDateStr = it.productionDate?.let { dateFormat.format(Date(it)) } ?: ""
+                reminderDays = it.reminderDays
+                reminderDaysStr = it.reminderDays?.toString() ?: ""
+                expirationDate = it.expirationDate
+                quantityStr = it.quantity?.toString() ?: ""
 
-            // 先获取列表，再在列表中查找
-            val list = itemCategoryViewModel.allCategories.first()
-            val categoryObj = list.firstOrNull { it.categoryName == item.category }
-            selectedItemCategory = categoryObj
+                // 更新选中类别和容器等（按原逻辑）
+                val list = itemCategoryViewModel.allCategories.first()
+                selectedItemCategory = list.firstOrNull { cat -> cat.categoryName == it.category }
 
-            // 获取当前房间所有容器，并查找匹配的容器对象
-            val containerList =
-                containerViewModel.getContainersByRoom(item.room).firstOrNull() ?: emptyList()
-            selectedContainer = containerList.firstOrNull { it.name == item.container }
+                val containerList = containerViewModel.getContainersByRoom(it.room).firstOrNull() ?: emptyList()
+                selectedContainer = containerList.firstOrNull { c -> c.name == it.container }
 
-            if (subContainer.isNotEmpty() && selectedContainer?.hasSubContainer == true) {
-                val subList = subContainerViewModel.getSubContainers(item.room, item.container)
-                    .firstOrNull() ?: emptyList()
-                selectedSubContainer = subList.firstOrNull { it.subContainerName == subContainer }
-
-                if (thirdContainer.isNotEmpty() && selectedSubContainer?.hasThirdContainer == true) {
-                    val thirdList = thirdContainerViewModel
-                        .getThirdContainers(item.room, item.container, subContainer)
+                if (subContainer.isNotEmpty() && selectedContainer?.hasSubContainer == true) {
+                    val subList = subContainerViewModel.getSubContainers(it.room, it.container)
                         .firstOrNull() ?: emptyList()
-                    selectedThirdContainer =
-                        thirdList.firstOrNull { it.thirdContainerName == thirdContainer }
+                    selectedSubContainer = subList.firstOrNull { sc -> sc.subContainerName == it.subContainer }
+
+                    if (thirdContainer.isNotEmpty() && selectedSubContainer?.hasThirdContainer == true) {
+                        val thirdList = thirdContainerViewModel
+                            .getThirdContainers(it.room, it.container, it.subContainer!!)
+                            .firstOrNull() ?: emptyList()
+                        selectedThirdContainer = thirdList.firstOrNull { tc -> tc.thirdContainerName == it.thirdContainer }
+                    }
                 }
             }
         }
     }
+
     // 新建模式时，若有默认房间或容器，则直接填入
     LaunchedEffect(defaultRoom, defaultContainer) {
         if (!isEditScreen) {
@@ -315,7 +318,8 @@ fun ItemFormScreen(
 
     val imageCropLauncher = rememberLauncherForActivityResult(contract = UCropContract()) { croppedUri ->
         if (croppedUri != null) {
-            photoUri = croppedUri
+            // 附加唯一参数，避免缓存问题
+            photoUri = Uri.parse("${croppedUri}?t=${System.currentTimeMillis()}")
         }
     }
 
@@ -445,10 +449,38 @@ fun ItemFormScreen(
                 },
                 actions = {
                     if (isEditScreen) {
+                        // 原有的编辑/取消编辑按钮
                         IconButton(onClick = { isEditing = !isEditing }) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = if (isEditing) "取消编辑" else "编辑"
+                            )
+                        }
+                        // 新增“另存为新物品”按钮
+                        IconButton(onClick = {
+                            // 调用另存为新物品的方法
+                            saveAsNewItem(
+                                name = name,
+                                room = room,
+                                container = container,
+                                subContainer = if (selectedContainer?.hasSubContainer == true) subContainer else null,
+                                thirdContainer = if (selectedSubContainer?.hasThirdContainer == true) thirdContainer else null,
+                                category = category,
+                                description = description,
+                                photoUri = photoUri,
+                                productionDate = productionDate,
+                                reminderDaysStr = reminderDaysStr,
+                                quantityStr = quantityStr,
+                                expirationDate = expirationDate,
+                                context = context,
+                                itemViewModel = itemViewModel,
+                                navController = navController,
+                                selectedItemCategory = selectedItemCategory
+                            )
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.FileCopy, // 或者选择你喜欢的图标
+                                contentDescription = "另存为新物品"
                             )
                         }
                     }
@@ -466,22 +498,25 @@ fun ItemFormScreen(
                                 reminderDaysStr.toLongOrNull() else null
 
                         existingItem?.photoUri?.let { oldUri ->
-                            try {
-                                Uri.parse(oldUri).path?.let { path ->
-                                    File(path)
-                                        .takeIf { it.exists() && it.isFile && it.canWrite() }
-                                        ?.delete()
-                                        ?.also { deleted ->
-                                            if (deleted) {
-                                                Log.d("Photo", "旧照片删除成功: $path")
-                                            } else {
-                                                Log.w("Photo", "旧照片删除失败（文件存在但无法删除）: $path")
+                            // 如果旧照片和当前照片不一样再删除，否则保留
+                            if (oldUri != photoUri.toString()) {
+                                try {
+                                    Uri.parse(oldUri).path?.let { path ->
+                                        File(path)
+                                            .takeIf { it.exists() && it.isFile && it.canWrite() }
+                                            ?.delete()
+                                            ?.also { deleted ->
+                                                if (deleted) {
+                                                    Log.d("Photo", "旧照片删除成功: $path")
+                                                } else {
+                                                    Log.w("Photo", "旧照片删除失败（文件存在但无法删除）: $path")
+                                                }
                                             }
-                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("Photo", "删除旧照片时出现异常", e)
+                                    Toast.makeText(context, "旧照片清理失败，可能会产生冗余文件", Toast.LENGTH_SHORT).show()
                                 }
-                            } catch (e: Exception) {
-                                Log.e("Photo", "删除旧照片时出现异常", e)
-                                Toast.makeText(context, "旧照片清理失败，可能会产生冗余文件", Toast.LENGTH_SHORT).show()
                             }
                         }
 
@@ -610,7 +645,7 @@ fun ItemFormScreen(
                                 }
                             }
 
-                            val coroutineScope = rememberCoroutineScope()
+                            val subCoroutineScope = rememberCoroutineScope()
 
                             // 容器选择
                             ExposedDropdownMenuBox(
@@ -619,7 +654,7 @@ fun ItemFormScreen(
                                     containerExpanded =
                                         if (room.isNotBlank()) newExpanded else false
                                     if (room.isNotBlank() && newExpanded) {
-                                        coroutineScope.launch {
+                                        subCoroutineScope.launch {
                                             containers =
                                                 containerViewModel.getContainersByRoom(room).first()
                                         }
@@ -687,12 +722,12 @@ fun ItemFormScreen(
                             // 声明一个 mutableState 保存当前的二级容器列表
                             var subContainerList by remember { mutableStateOf(emptyList<SubContainerEntity>()) }
                             // 获取 coroutineScope
-                            val coroutineScope = rememberCoroutineScope()
+                            val subCoroutineScope = rememberCoroutineScope()
 
                             // 当 room 或 container 发生变化时，更新 subContainerList
                             LaunchedEffect(room, container) {
                                 if (room.isNotBlank() && container.isNotBlank()) {
-                                    coroutineScope.launch {
+                                    subCoroutineScope.launch {
                                         subContainerList = subContainerViewModel.getSubContainers(room, container)
                                             .firstOrNull() ?: emptyList()
                                     }
@@ -754,11 +789,11 @@ fun ItemFormScreen(
                         if (selectedSubContainer?.hasThirdContainer == true) {
                             var thirdContainerList by remember { mutableStateOf(emptyList<ThirdContainerEntity>()) }
                             // 获取 coroutineScope
-                            val coroutineScope = rememberCoroutineScope()
+                            val subCoroutineScope = rememberCoroutineScope()
 
                             LaunchedEffect(room, container, subContainer) {
                                 if (room.isNotBlank() && container.isNotBlank() && subContainer.isNotBlank()) {
-                                    coroutineScope.launch {
+                                    subCoroutineScope.launch {
                                         thirdContainerList = thirdContainerViewModel.getThirdContainers(room, container, subContainer)
                                             .firstOrNull() ?: emptyList()
                                     }
@@ -830,13 +865,12 @@ fun ItemFormScreen(
                     ) {
                         Text("物品信息", style = MaterialTheme.typography.titleMedium)
 
-                        val coroutineScope = rememberCoroutineScope()
-
+                        val subCoroutineScope = rememberCoroutineScope()
                         ExposedDropdownMenuBox(
                             expanded = categoryExpanded,
                             onExpandedChange = { newExpanded ->
                                 if (newExpanded) {
-                                    coroutineScope.launch {
+                                    subCoroutineScope.launch {
                                         categoriesList = itemCategoryViewModel.allCategories.first()
                                     }
                                 }
@@ -1028,6 +1062,74 @@ fun ItemFormScreen(
                 Spacer(modifier = Modifier.height(72.dp))
             }
         }
+    }
+}
+
+fun saveAsNewItem(
+    name: String,
+    room: String,
+    container: String,
+    subContainer: String?,
+    thirdContainer: String?,
+    category: String,
+    description: String,
+    photoUri: Uri?,
+    productionDate: Long?,
+    reminderDaysStr: String,
+    quantityStr: String,
+    expirationDate: Long?,
+    context: Context,
+    itemViewModel: ItemViewModel,
+    navController: NavController,
+    selectedItemCategory: com.example.homestorage.data.ItemCategory?
+) {
+    // 必填项校验
+    if (name.isNotBlank() && room.isNotBlank() &&
+        container.isNotBlank() && category.isNotBlank() && photoUri != null
+    ) {
+        val reminderDays = if (selectedItemCategory?.needReminder == true && reminderDaysStr.isNotBlank())
+            reminderDaysStr.toLongOrNull() else null
+        val quantity = if (selectedItemCategory?.needQuantity == true) quantityStr.toIntOrNull() else null
+
+        // 如果 photoUri 非空，则复制原照片到新的目标位置
+        val newPhotoUriString = run {
+            val destUri = createDestinationUri(context)
+            try {
+                context.contentResolver.openInputStream(photoUri)?.use { inputStream ->
+                    context.contentResolver.openOutputStream(destUri)?.use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SaveAsNewItem", "复制照片出错", e)
+                // 如果复制失败，则回退使用原来的 URI
+                photoUri.toString()
+            }
+            destUri.toString()
+        }
+
+        // 注意这里 id 固定为 0，表示新建记录
+        val newItem = Item(
+            id = 0,
+            name = name,
+            room = room,
+            container = container,
+            subContainer = subContainer,
+            thirdContainer = thirdContainer,
+            category = category,
+            description = description,
+            photoUri = newPhotoUriString ?: "",
+            timestamp = System.currentTimeMillis(),
+            productionDate = productionDate,
+            reminderDays = reminderDays,
+            quantity = quantity,
+            expirationDate = expirationDate
+        )
+        itemViewModel.insert(newItem)
+        Toast.makeText(context, "另存为新物品成功", Toast.LENGTH_SHORT).show()
+        navController.popBackStack()
+    } else {
+        Toast.makeText(context, "请确保必填项已填写并选择图片", Toast.LENGTH_SHORT).show()
     }
 }
 
