@@ -17,6 +17,18 @@ android {
         versionName = "1.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments["room.schemaLocation"] = "$projectDir/schemas"
+            }
+        }
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/src/androidTest/schemas")
+        }
     }
 
     buildTypes {

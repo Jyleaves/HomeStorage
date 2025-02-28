@@ -1129,7 +1129,6 @@ fun saveAsNewItem(
             thirdContainer = thirdContainer,
             category = category,
             description = description,
-            // 将转换后的字符串列表传给 photoUris 字段
             photoUris = newPhotoUriStringList,
             timestamp = System.currentTimeMillis(),
             productionDate = productionDate,
@@ -1152,12 +1151,8 @@ fun createDestinationUri(context: Context): Uri {
     }
     val imageFile = File(imagesDir, "temp_${System.currentTimeMillis()}.jpg")
     if (!imageFile.exists()) {
-        val created = imageFile.createNewFile()
-        Log.d("createDestinationUri", "创建目标空文件: ${imageFile.absolutePath}, 成功: $created")
-    } else {
-        Log.d("createDestinationUri", "目标文件已存在: ${imageFile.absolutePath}")
+        imageFile.createNewFile()
     }
-    Log.d("createDestinationUri", "生成的目标URI: ${Uri.fromFile(imageFile)}")
     return Uri.fromFile(imageFile)
 }
 

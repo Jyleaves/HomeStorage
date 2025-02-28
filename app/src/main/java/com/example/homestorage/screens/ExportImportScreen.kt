@@ -23,7 +23,9 @@ import com.example.homestorage.data.ItemCategory
 import com.example.homestorage.data.RoomEntity
 import com.example.homestorage.data.SubContainerEntity
 import com.example.homestorage.data.ThirdContainerEntity
+import com.example.homestorage.util.ItemDeserializer
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -237,7 +239,9 @@ suspend fun importZipData(context: Context, uri: Uri) {
             zipInputStream.close()
         }
         if (jsonContent != null) {
-            val gson = Gson()
+            val gson = GsonBuilder()
+                .registerTypeAdapter(Item::class.java, ItemDeserializer())
+                .create()
             val type = object : TypeToken<ExportData>() {}.type
             val exportData: ExportData = gson.fromJson(jsonContent, type)
             // 1. 房间
