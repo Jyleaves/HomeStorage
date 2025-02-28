@@ -23,6 +23,7 @@ import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.rememberDismissState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -130,12 +131,36 @@ fun ItemRow(
                     ) {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(modifier = Modifier.padding(8.dp)) {
-                                AsyncImage(
-                                    model = item.photoUri,
-                                    contentDescription = item.name,
-                                    modifier = Modifier.size(80.dp),
-                                    contentScale = ContentScale.Crop
-                                )
+                                // 图片显示区域
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .clip(MaterialTheme.shapes.small)
+                                ) {
+                                    item.photoUris.firstOrNull()?.let { uri ->
+                                        AsyncImage(
+                                            model = uri,
+                                            contentDescription = item.name,
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .align(Alignment.Center)
+                                        )
+                                    } ?: run {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhotoCamera,
+                                                contentDescription = "无图片",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
@@ -198,12 +223,36 @@ fun ItemRow(
                 ) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.padding(8.dp)) {
-                            AsyncImage(
-                                model = item.photoUri,
-                                contentDescription = item.name,
-                                modifier = Modifier.size(80.dp),
-                                contentScale = ContentScale.Crop
-                            )
+                            // 图片显示区域
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(MaterialTheme.shapes.small)
+                            ) {
+                                item.photoUris.firstOrNull()?.let { uri ->
+                                    AsyncImage(
+                                        model = uri,
+                                        contentDescription = item.name,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .align(Alignment.Center)
+                                    )
+                                } ?: run {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhotoCamera,
+                                            contentDescription = "无图片",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(modifier = Modifier.width(8.dp))
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(

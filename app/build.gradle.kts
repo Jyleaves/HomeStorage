@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.foundation)
 
     // Navigation Compose（导航）
     implementation(libs.androidx.navigation.compose)
@@ -65,6 +66,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.room.testing)
     add("kapt", libs.androidx.room.compiler)
 
     // Lifecycle & ViewModel 与 Compose 结合
@@ -85,6 +87,9 @@ dependencies {
     implementation(libs.text.recognition.chinese)
 
     implementation(libs.google.accompanist.systemuicontroller)
+    implementation(libs.google.accompanist.pager)
+
+    implementation(libs.jetbrains.kotlinx.serialization.json)
 
     // 测试依赖
     testImplementation(libs.junit)

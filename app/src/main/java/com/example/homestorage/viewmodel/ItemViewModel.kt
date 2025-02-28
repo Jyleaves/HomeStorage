@@ -40,9 +40,10 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
 
     fun delete(item: Item) {
         viewModelScope.launch {
-            // 先删除照片文件
-            deletePhotoFile(appContext, item.photoUri)
-            // 再删除数据库记录
+            // 遍历删除所有照片文件
+            item.photoUris.forEach { uri ->
+                deletePhotoFile(appContext, uri)
+            }
             itemDao.delete(item)
         }
     }
@@ -84,7 +85,8 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             // 获取要删除的ID列表
             val itemIds = items.map { it.id }
-            val photoUris = items.map { it.photoUri }
+            // 展开所有照片URI
+            val photoUris = items.flatMap { it.photoUris }
 
             // 批量删除数据库记录
             itemDao.deleteBatch(itemIds)
@@ -98,7 +100,7 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     appContext,
-                    "已删除 ${items.size} 件物品",
+                    "已删除 ${items.size} 件物品（含${photoUris.size}张照片）",
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -117,6 +119,11 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             itemDao.deleteItemsBySubContainer(room, container, subContainer)
         }
+    }
+
+    // 获取指定物品的所有照片URI
+    suspend fun getItemPhotoUris(itemId: Int): List<String> {
+        return itemDao.getItemById(itemId)?.photoUris ?: emptyList()
     }
 }
 

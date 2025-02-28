@@ -1,6 +1,7 @@
 package com.example.homestorage.screens
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -138,18 +140,19 @@ suspend fun exportDataAndImages(context: Context, uri: Uri) {
         // 对物品进行处理：若有图片，则将图片路径改为相对路径，并保存图片映射
         val exportItems = mutableListOf<Item>()
         val imageMap = mutableMapOf<String, Uri>()
-        items.forEachIndexed { index, item ->
-            if (item.photoUri.isNotBlank()) {
-                val originalPhotoUri = Uri.parse(item.photoUri)
-                // 尝试从 URI 获取文件名；如果为空则用 photo_index.jpg
-                val fileName = originalPhotoUri.lastPathSegment ?: "photo_$index.jpg"
-                imageMap[fileName] = originalPhotoUri
-                // 使用 copy() 修改 photoUri 为相对路径
-                val newItem = item.copy(photoUri = "images/$fileName")
-                exportItems.add(newItem)
-            } else {
-                exportItems.add(item)
+        items.forEachIndexed { itemIndex, item ->
+            val processedUris = item.photoUris.mapIndexedNotNull { photoIndex, uri ->
+                if (uri.isNotBlank()) {
+                    val originalUri = Uri.parse(uri)
+                    // 生成唯一文件名：物品索引_图片索引.扩展名
+                    val ext = originalUri.lastPathSegment?.substringAfterLast('.') ?: "jpg"
+                    val fileName = "item${itemIndex}_img${photoIndex}.$ext"
+                    imageMap[fileName] = originalUri
+                    "images/$fileName" // 返回相对路径
+                } else null
             }
+            // 创建新的Item副本
+            exportItems.add(item.copy(photoUris = processedUris))
         }
         // 构造封装所有数据的对象
         val exportData = ExportData(
@@ -175,10 +178,10 @@ suspend fun exportDataAndImages(context: Context, uri: Uri) {
                     // 判断图片 URI 的 scheme
                     val inputStream = when (imageUri.scheme) {
                         "content" -> context.contentResolver.openInputStream(imageUri)
-                        "file" -> imageUri.path?.let { java.io.File(it).inputStream() }
+                        "file" -> imageUri.path?.let { File(it).inputStream() }
                         else -> {
                             // 如果没有 scheme，尝试当作文件路径处理
-                            java.io.File(imageUri.toString()).takeIf { it.exists() }?.inputStream()
+                            File(imageUri.toString()).takeIf { it.exists() }?.inputStream()
                         }
                     }
                     inputStream?.use { imageInputStream ->
@@ -259,20 +262,22 @@ suspend fun importZipData(context: Context, uri: Uri) {
             }
             // 6. 物品
             exportData.items.forEach { item ->
-                if (item.photoUri.isNotBlank() && item.photoUri.startsWith("images/")) {
-                    val fileName = item.photoUri.removePrefix("images/")
-                    val imageBytes = imageBytesMap[fileName]
-                    if (imageBytes != null) {
-                        val file = java.io.File(context.cacheDir, fileName)
-                        file.writeBytes(imageBytes)
-                        // 更新 photoUri 为保存后文件的绝对路径，并重置 id
-                        db.itemDao().insert(item.copy(id = 0, photoUri = file.absolutePath))
-                    } else {
-                        db.itemDao().insert(item.copy(id = 0))
-                    }
-                } else {
-                    db.itemDao().insert(item.copy(id = 0))
+                val newUris = item.photoUris.mapNotNull { relativePath ->
+                    if (relativePath.startsWith("images/")) {
+                        val fileName = relativePath.removePrefix("images/")
+                        val imageBytes = imageBytesMap[fileName]
+                        imageBytes?.let {
+                            // 保存到应用专属存储空间（更安全）
+                            val file = File(context.filesDir, "images/$fileName").apply {
+                                parentFile?.mkdirs()
+                            }
+                            file.writeBytes(it)
+                            Uri.fromFile(file).toString() // 转换为可访问的URI
+                        }
+                    } else null
                 }
+                // 插入带新URI的Item
+                db.itemDao().insert(item.copy(id = 0, photoUris = newUris))
             }
             Toast.makeText(context, "数据导入成功", Toast.LENGTH_SHORT).show()
         } else {
@@ -288,12 +293,10 @@ suspend fun importZipData(context: Context, uri: Uri) {
  * 分享导出的 Zip 文件
  */
 fun shareZipFile(context: Context, fileUri: Uri) {
-    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+    val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
         type = "application/zip"
-        putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        putExtra(Intent.EXTRA_STREAM, arrayListOf(fileUri))
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(
-        android.content.Intent.createChooser(shareIntent, "分享 Zip 文件")
-    )
+    context.startActivity(Intent.createChooser(shareIntent, "分享备份文件"))
 }

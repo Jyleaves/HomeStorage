@@ -18,7 +18,7 @@ data class Item(
     val thirdContainer: String? = null,
     val category: String,
     val description: String,
-    val photoUri: String,
+    val photoUris: List<String> = emptyList(),
     val productionDate: Long? = null,    // 生产日期
     val reminderDays: Long? = null,        // 提前提醒的天数
     val quantity: Int? = null,             // 数量
@@ -33,4 +33,6 @@ data class Item(
             thirdContainer?.takeIf { it.isNotEmpty() }
         ).joinToString(" > ")
     }
+
+    fun getFirstPhotoUri(): String? = photoUris.firstOrNull()
 }

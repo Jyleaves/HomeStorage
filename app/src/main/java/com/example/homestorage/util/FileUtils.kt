@@ -43,3 +43,10 @@ fun deletePhotoFile(context: Context, uriString: String?) {
         Log.e("FileUtils", "Delete photo failed: ${e.message}")
     }
 }
+
+// 批量删除方法
+fun deletePhotoFiles(context: Context, uris: List<String>) {
+    uris.forEach { uri ->
+        deletePhotoFile(context, uri)
+    }
+}

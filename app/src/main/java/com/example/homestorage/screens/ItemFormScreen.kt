@@ -16,7 +16,6 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -32,23 +31,19 @@ import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
 import com.example.homestorage.data.Item
 import com.example.homestorage.data.ContainerEntity
-import com.example.homestorage.components.ImageSelector
+import com.example.homestorage.components.MultiImageSelector
+import com.example.homestorage.components.PhotoViewDialog
 import com.example.homestorage.data.SubContainerEntity
 import com.example.homestorage.data.ThirdContainerEntity
 import com.example.homestorage.navigation.Screen
@@ -107,7 +102,8 @@ fun ItemFormScreen(
     var thirdContainer by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") } // 用来显示类别名称
     var description by remember { mutableStateOf("") }
-    var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var photoUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val MAX_PHOTOS = 3  // 照片最多支持存储3张
 
     // 新增：生产日期、提醒天数、有效期
     var productionDate by remember { mutableStateOf<Long?>(null) }
@@ -143,7 +139,7 @@ fun ItemFormScreen(
                 thirdContainer = it.thirdContainer ?: ""
                 category = it.category
                 description = it.description
-                photoUri = Uri.parse(it.photoUri)
+                photoUris = it.photoUris.map { uriString -> Uri.parse(uriString) }
                 productionDate = it.productionDate
                 productionDateStr = productionDate?.let {
                     Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(dateFormatter)
@@ -276,84 +272,40 @@ fun ItemFormScreen(
 
     // 大图预览弹窗
     var showLargeImageDialog by remember { mutableStateOf(false) }
-    if (showLargeImageDialog && photoUri != null) {
+    var previewStartIndex by remember { mutableIntStateOf(0) }
+    if (showLargeImageDialog && photoUris.isNotEmpty()) {
         val systemUiController = rememberSystemUiController()
-        SideEffect {
-            systemUiController.isSystemBarsVisible = false // 隐藏状态栏和导航栏
-        }
+        PhotoViewDialog(
+            images = photoUris,
+            initialIndex = previewStartIndex,
+            onDismiss = {
+                showLargeImageDialog = false
+                systemUiController.isSystemBarsVisible = true
+            }
+        )
+    }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(999f)
-                .background(Color.Black)
-                .clickable {  // 新增背景点击监听
-                    showLargeImageDialog = false
-                    systemUiController.isSystemBarsVisible = true
-                }
-        ) {
-            var scale by remember { mutableFloatStateOf(1f) }
-            var offset by remember { mutableStateOf(Offset.Zero) }
-
-            AsyncImage(
-                model = photoUri,
-                contentDescription = "大图预览",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTransformGestures(
-                            onGesture = { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(1f, 5f)
-                                offset += pan
-                            }
-                        )
-                    }
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationX = offset.x
-                        translationY = offset.y
-                    },
-                contentScale = ContentScale.Fit
-            )
-
-            // 返回按钮
-            IconButton(
-                onClick = {
-                    showLargeImageDialog = false
-                    systemUiController.isSystemBarsVisible = true // 恢复系统栏
-                },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "关闭预览",
-                    tint = Color.White
-                )
+    val imageCropLauncher = rememberLauncherForActivityResult(UCropContract()) { croppedUri ->
+        croppedUri?.let { uri ->
+            if (photoUris.size < MAX_PHOTOS) {
+                photoUris = photoUris + uri
+            } else {
+                Toast.makeText(context, "最多上传$MAX_PHOTOS 张图片", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    val imageCropLauncher = rememberLauncherForActivityResult(contract = UCropContract()) { croppedUri ->
-        if (croppedUri != null) {
-            // 附加唯一参数，避免缓存问题
-            photoUri = Uri.parse("${croppedUri}?t=${System.currentTimeMillis()}")
-        }
-    }
-
-    val isPhotoPickerAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU // API 33
+    // 针对 Android 13+（API 33 及以上）的多图选择器
     val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        uri?.let {
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris: List<Uri>? ->
+        uris?.take(MAX_PHOTOS - photoUris.size)?.forEach { uri ->
             val destinationUri = createDestinationUri(context)
-            imageCropLauncher.launch(Pair(it, destinationUri))
+            imageCropLauncher.launch(Pair(uri, destinationUri))
         }
     }
 
-    // 相册选择
+    // 针对 Android 12 及以下的传统相册选择器
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -370,8 +322,10 @@ fun ItemFormScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         if (success && tempPhotoUri != null) {
-            val destinationUri = createDestinationUri(context)
-            imageCropLauncher.launch(Pair(tempPhotoUri!!, destinationUri))
+            if (photoUris.size < MAX_PHOTOS) {
+                val destinationUri = createDestinationUri(context)
+                imageCropLauncher.launch(Pair(tempPhotoUri!!, destinationUri))
+            }
         }
     }
 
@@ -411,13 +365,13 @@ fun ItemFormScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showImageSourceDialog = false
-                    if (isPhotoPickerAvailable) {
-                        // 使用 Photo Picker（支持 Android 13+）
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            PickVisualMediaRequest.Builder()
+                                .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                .build()
                         )
                     } else {
-                        // 回退到传统相册（Android 12 及以下）
                         val intent = Intent(Intent.ACTION_PICK).apply {
                             type = "image/*"
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -522,7 +476,7 @@ fun ItemFormScreen(
                                 thirdContainer = if (selectedSubContainer?.hasThirdContainer == true) thirdContainer else null,
                                 category = category,
                                 description = description,
-                                photoUri = photoUri,
+                                photoUris = photoUris,
                                 productionDate = productionDate,
                                 reminderDaysStr = reminderDaysStr,
                                 quantityStr = quantityStr,
@@ -552,31 +506,24 @@ fun ItemFormScreen(
                             if (selectedItemCategory?.needReminder == true && reminderDaysStr.isNotBlank())
                                 reminderDaysStr.toLongOrNull() else null
 
-                        existingItem?.photoUri?.let { oldUri ->
-                            // 如果旧照片和当前照片不一样再删除，否则保留
-                            if (oldUri != photoUri.toString()) {
+                        // 删除旧照片：遍历数据库中存储的旧照片 URI 字符串列表
+                        existingItem?.photoUris?.forEach { oldUriString ->
+                            // 如果新的图片列表中不包含该旧照片，则执行删除操作
+                            if (!photoUris.map { it.toString() }.contains(oldUriString)) {
                                 try {
-                                    Uri.parse(oldUri).path?.let { path ->
+                                    Uri.parse(oldUriString).path?.let { path ->
                                         File(path)
                                             .takeIf { it.exists() && it.isFile && it.canWrite() }
                                             ?.delete()
-                                            ?.also { deleted ->
-                                                if (deleted) {
-                                                    Log.d("Photo", "旧照片删除成功: $path")
-                                                } else {
-                                                    Log.w("Photo", "旧照片删除失败（文件存在但无法删除）: $path")
-                                                }
-                                            }
                                     }
                                 } catch (e: Exception) {
-                                    Log.e("Photo", "删除旧照片时出现异常", e)
                                     Toast.makeText(context, "旧照片清理失败，可能会产生冗余文件", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
 
                         if (name.isNotBlank() && room.isNotBlank() &&
-                            container.isNotBlank() && category.isNotBlank() && photoUri != null
+                            container.isNotBlank() && category.isNotBlank() && photoUris.isNotEmpty()
                         ) {
                             val quantity =
                                 if (selectedItemCategory?.needQuantity == true) quantityStr.toIntOrNull() else null
@@ -589,7 +536,7 @@ fun ItemFormScreen(
                                 thirdContainer = if (selectedSubContainer?.hasThirdContainer == true) thirdContainer else null,
                                 category = category,
                                 description = description,
-                                photoUri = photoUri.toString(),
+                                photoUris = photoUris.map { it.toString() },
                                 timestamp = System.currentTimeMillis(),
                                 productionDate = productionDate,
                                 reminderDays = reminderDays,
@@ -1106,13 +1053,18 @@ fun ItemFormScreen(
                     ) {
                         Text("图片", style = MaterialTheme.typography.titleMedium)
 
-                        // 这里复用你的 ImageSelector
-                        ImageSelector(
-                            photoUri = photoUri,
+                        MultiImageSelector(
+                            photoUris = photoUris,
                             isEditing = isEditing,
-                            onSelectImage = { showImageSourceDialog = true },
-                            onPreviewImage = { showLargeImageDialog = true },
-                            modifier = Modifier.size(120.dp)
+                            onAddImage = { showImageSourceDialog = true },
+                            onRemoveImage = { index ->
+                                photoUris = photoUris.toMutableList().apply { removeAt(index) }
+                            },
+                            onPreviewImage = { index ->
+                                previewStartIndex = index
+                                showLargeImageDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -1132,7 +1084,7 @@ fun saveAsNewItem(
     thirdContainer: String?,
     category: String,
     description: String,
-    photoUri: Uri?,
+    photoUris: List<Uri>,
     productionDate: Long?,
     reminderDaysStr: String,
     quantityStr: String,
@@ -1142,27 +1094,27 @@ fun saveAsNewItem(
     navController: NavController,
     selectedItemCategory: com.example.homestorage.data.ItemCategory?
 ) {
-    // 必填项校验
+    // 必填项校验，判断 photoUris 非空
     if (name.isNotBlank() && room.isNotBlank() &&
-        container.isNotBlank() && category.isNotBlank() && photoUri != null
+        container.isNotBlank() && category.isNotBlank() && photoUris.isNotEmpty()
     ) {
         val reminderDays = if (selectedItemCategory?.needReminder == true && reminderDaysStr.isNotBlank())
             reminderDaysStr.toLongOrNull() else null
         val quantity = if (selectedItemCategory?.needQuantity == true) quantityStr.toIntOrNull() else null
 
-        // 如果 photoUri 非空，则复制原照片到新的目标位置
-        val newPhotoUriString = run {
+        // 对每个 photoUri 进行复制，生成新的目标 URI 字符串列表
+        val newPhotoUriStringList: List<String> = photoUris.map { sourceUri ->
             val destUri = createDestinationUri(context)
             try {
-                context.contentResolver.openInputStream(photoUri)?.use { inputStream ->
+                context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
                     context.contentResolver.openOutputStream(destUri)?.use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
                 }
             } catch (e: Exception) {
                 Log.e("SaveAsNewItem", "复制照片出错", e)
-                // 如果复制失败，则回退使用原来的 URI
-                photoUri.toString()
+                // 如果复制失败，则回退使用原来的 URI 字符串
+                return@map sourceUri.toString()
             }
             destUri.toString()
         }
@@ -1177,7 +1129,8 @@ fun saveAsNewItem(
             thirdContainer = thirdContainer,
             category = category,
             description = description,
-            photoUri = newPhotoUriString,
+            // 将转换后的字符串列表传给 photoUris 字段
+            photoUris = newPhotoUriStringList,
             timestamp = System.currentTimeMillis(),
             productionDate = productionDate,
             reminderDays = reminderDays,
