@@ -1064,6 +1064,14 @@ fun ItemFormScreen(
                                 previewStartIndex = index
                                 showLargeImageDialog = true
                             },
+                            onMoveImage = { from, to ->
+                                // 执行数组元素交换
+                                val newList = photoUris.toMutableList().apply {
+                                    val item = removeAt(from)
+                                    add(to, item)
+                                }
+                                photoUris = newList
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
