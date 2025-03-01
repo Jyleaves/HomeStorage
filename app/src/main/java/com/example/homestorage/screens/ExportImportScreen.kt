@@ -297,10 +297,12 @@ suspend fun importZipData(context: Context, uri: Uri) {
  * 分享导出的 Zip 文件
  */
 fun shareZipFile(context: Context, fileUri: Uri) {
-    val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
         type = "application/zip"
-        putExtra(Intent.EXTRA_STREAM, arrayListOf(fileUri))
+        putExtra(Intent.EXTRA_STREAM, fileUri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(shareIntent, "分享备份文件"))
+    context.startActivity(
+        Intent.createChooser(shareIntent, "分享备份文件")
+    )
 }
