@@ -65,6 +65,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.core.net.toUri
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,7 +140,7 @@ fun ItemFormScreen(
                 thirdContainer = it.thirdContainer ?: ""
                 category = it.category
                 description = it.description
-                photoUris = it.photoUris.map { uriString -> Uri.parse(uriString) }
+                photoUris = it.photoUris.map { uriString -> uriString.toUri() }
                 productionDate = it.productionDate
                 productionDateStr = productionDate?.let {
                     Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(dateFormatter)
@@ -511,12 +512,12 @@ fun ItemFormScreen(
                             // 如果新的图片列表中不包含该旧照片，则执行删除操作
                             if (!photoUris.map { it.toString() }.contains(oldUriString)) {
                                 try {
-                                    Uri.parse(oldUriString).path?.let { path ->
+                                    oldUriString.toUri().path?.let { path ->
                                         File(path)
                                             .takeIf { it.exists() && it.isFile && it.canWrite() }
                                             ?.delete()
                                     }
-                                } catch (e: Exception) {
+                                } catch (_: Exception) {
                                     Toast.makeText(context, "旧照片清理失败，可能会产生冗余文件", Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -982,7 +983,7 @@ fun ItemFormScreen(
                                         label = "有效期",
                                         dateStr = expirationDateStr,
                                         onClick = {
-                                            if (canEditExpirationDate) showDatePicker = true
+                                            if (canEditExpirationDate) showExpirationDatePicker = true
                                         }
                                     )
                                 }
@@ -1002,7 +1003,7 @@ fun ItemFormScreen(
                                 label = "有效期",
                                 dateStr = expirationDateStr,
                                 onClick = {
-                                    if (canEditExpirationDate) showDatePicker = true
+                                    if (canEditExpirationDate) showExpirationDatePicker = true
                                 }
                             )
                         }
