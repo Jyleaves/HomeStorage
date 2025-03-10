@@ -5,23 +5,17 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,6 +24,7 @@ import com.example.homestorage.components.*
 import com.example.homestorage.components.ItemViewMode
 import com.example.homestorage.data.ContainerEntity
 import com.example.homestorage.data.Item
+import com.example.homestorage.navigation.Screen
 import com.example.homestorage.viewmodel.ContainerViewModel
 import com.example.homestorage.viewmodel.ItemViewModel
 import com.example.homestorage.viewmodel.RoomViewModel
@@ -49,7 +44,6 @@ fun HomeScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
 
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
 
     // 容器数据
     var containerList by remember { mutableStateOf(emptyList<ContainerEntity>()) }
@@ -98,8 +92,15 @@ fun HomeScreen(
     }
 
     // 过滤物品
-    val filteredItems by itemViewModel.getFilteredItems(selectedRoom, searchQuery)
-        .collectAsState(initial = emptyList())
+    val filteredItems by itemViewModel.getFilteredItemsForContainer(
+        room = selectedRoom,
+        container = "", // HomeScreen 不区分容器，可传空或特殊标记
+        filterMode = "category", // 固定一种模式
+        selectedCategory = "全部",  // 或传 "全部"
+        selectedSubContainer = "全部",
+        selectedThirdContainer = "全部",
+        searchQuery = searchQuery
+    ).collectAsState(initial = emptyList())
 
     var itemViewMode by remember { mutableStateOf(ItemViewMode.LIST) }
 
@@ -117,25 +118,13 @@ fun HomeScreen(
             )
             // 多选状态下的导航栏
             if (isSelectionMode) {
-                TopAppBar(
-                    title = { Text("已选择${selectedItems.size}项") },
-                    actions = {
-                        IconButton(onClick = { handleBatchEdit() }) {
-                            Icon(Icons.Default.Edit, contentDescription = "批量编辑")
-                        }
-                        IconButton(onClick = {
-                            if (selectedItems.isNotEmpty()) {
-                                showDeleteConfirm = true
-                            }
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "批量删除")
-                        }
-                        IconButton(onClick = {
-                            selectedItems.clear()
-                            isSelectionMode = false
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "取消选择")
-                        }
+                SelectionTopBar(
+                    selectedCount = selectedItems.size,
+                    onBatchEdit = { handleBatchEdit() },
+                    onBatchDelete = { if (selectedItems.isNotEmpty()) { showDeleteConfirm = true } },
+                    onCancelSelection = {
+                        selectedItems.clear()
+                        isSelectionMode = false
                     }
                 )
             }
@@ -146,13 +135,10 @@ fun HomeScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        DismissKeyboardBox(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { focusManager.clearFocus() })
-                }
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 搜索栏
@@ -162,13 +148,14 @@ fun HomeScreen(
                     onClear = { searchQuery = "" }
                 )
                 // 房间选择
-                RoomFilterRow(
-                    rooms = rooms,
-                    selectedRoom = selectedRoom,
-                    onRoomSelected = {
+                FilterChipRow(
+                    options = rooms.map { it.name },
+                    selectedOption = selectedRoom,
+                    onOptionSelected = {
                         selectedRoom = it
                         displayMode = "所有物品"
-                    }
+                    },
+                    allLabel = "全部"
                 )
                 // 仅在选中具体房间时显示模式切换
                 if (selectedRoom != "全部") {
@@ -214,10 +201,30 @@ fun HomeScreen(
                         } else {
                             ItemGridView(
                                 items = filteredItems,
-                                onItemClick = { item ->
-                                    navController.navigate("item_form/${item.id}") {
-                                        launchSingleTop = true
-                                        popUpTo("home") { saveState = false }
+                                isSelectionMode = isSelectionMode,             // 父级维护的多选状态
+                                selectedItems = selectedItems,                 // 父级保存的已选中物品列表
+                                onItemClick = onClick,
+                                onSelectToggle = { item ->
+                                    // 切换当前物品的选中状态
+                                    if (selectedItems.contains(item)) {
+                                        selectedItems.remove(item)
+                                    } else {
+                                        selectedItems.add(item)
+                                    }
+                                },
+                                onDelete = { itemViewModel.delete(it) },
+                                onLongPress = { item ->
+                                    if (!isSelectionMode) {
+                                        selectedLocation = item.getFullLocation()
+                                        isSelectionMode = true
+                                    }
+                                    if (item.getFullLocation() == selectedLocation) {
+                                        if (selectedItems.contains(item)) {
+                                            selectedItems.remove(item)
+                                        } else {
+                                            selectedItems.add(item)
+                                        }
+                                        isSelectionMode = selectedItems.isNotEmpty()
                                     }
                                 }
                             )
@@ -264,12 +271,21 @@ fun HomeScreen(
             onDismiss = { showAddDialog = false },
             onAddItem = {
                 showAddDialog = false
-                val defaultRoom = if (selectedRoom != "全部") selectedRoom else ""
-                navController.navigate("item_form/0/$defaultRoom/")
+                val defaultRoom = if (selectedRoom != "全部") selectedRoom else "全部"
+                navController.navigate(
+                    Screen.ItemForm.createRoute(
+                        itemId = 0,
+                        defaultRoom = defaultRoom,
+                        defaultContainer = "",
+                        defaultCategory = "",
+                        defaultSubContainer = "",
+                        defaultThirdContainer = ""
+                    )
+                )
             },
             onAddContainer = {
                 showAddDialog = false
-                navController.navigate("add_container/$selectedRoom")
+                navController.navigate(Screen.AddContainer.createRoute(selectedRoom, ""))
             },
             onManageRoom = {
                 showAddDialog = false

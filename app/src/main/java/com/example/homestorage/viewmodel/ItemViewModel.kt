@@ -158,5 +158,67 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
             }
         }.flowOn(Dispatchers.Default)
     }
+
+    // 在 ItemViewModel.kt 中新增该函数
+    fun getFilteredItemsForContainer(
+        room: String,
+        container: String,
+        filterMode: String, // "category" 或 "subcontainer"
+        selectedCategory: String,
+        selectedSubContainer: String,
+        selectedThirdContainer: String,
+        searchQuery: String = ""
+    ): Flow<List<Item>> {
+        // 如果搜索关键词为"到期"，每秒发射一次当前时间；否则只发射一次
+        val timeFlow = if (searchQuery.trim() == "到期") {
+            flow {
+                while (true) {
+                    emit(System.currentTimeMillis())
+                    delay(1000L)
+                }
+            }
+        } else {
+            flowOf(0L)
+        }
+        return combine(allItems, timeFlow) { items, currentTime ->
+            // 先按房间和容器过滤，但当 room 为 "全部" 或 container 为空时不做过滤
+            var filtered = items
+            if (room != "全部") {
+                filtered = filtered.filter { it.room == room }
+            }
+            if (container.isNotBlank()) {
+                filtered = filtered.filter { it.container == container }
+            }
+
+            // 搜索关键词过滤（如"到期"或名称搜索）
+            if (searchQuery.trim() == "到期") {
+                filtered = filtered.filter { item ->
+                    item.expirationDate != null && item.reminderDays != null &&
+                            item.expirationDate > currentTime &&
+                            (item.expirationDate - currentTime) <= item.reminderDays * 24 * 60 * 60 * 1000
+                }
+            } else if (searchQuery.isNotBlank()) {
+                filtered = filtered.filter { it.name.contains(searchQuery, ignoreCase = true) }
+            }
+
+            // 再根据筛选模式进行细化过滤
+            when (filterMode) {
+                "category" -> {
+                    if (selectedCategory != "全部" && selectedCategory.isNotBlank()) {
+                        filtered = filtered.filter { it.category == selectedCategory }
+                    }
+                }
+                "subcontainer" -> {
+                    filtered = if (selectedSubContainer == "全部") filtered
+                    else filtered.filter { it.subContainer == selectedSubContainer }
+                    // 如果已选二级容器且三级容器不为"全部"，进一步过滤
+                    if (selectedSubContainer != "全部" && selectedThirdContainer != "全部") {
+                        filtered = filtered.filter { it.thirdContainer == selectedThirdContainer }
+                    }
+                }
+            }
+            filtered
+        }.flowOn(Dispatchers.Default)
+    }
 }
 
