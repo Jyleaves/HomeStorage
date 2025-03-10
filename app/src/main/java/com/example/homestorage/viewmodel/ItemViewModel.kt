@@ -10,10 +10,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.homestorage.data.AppDatabase
 import com.example.homestorage.data.Item
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.*
 
 class ItemViewModel(application: Application) : AndroidViewModel(application) {
     private val itemDao = AppDatabase.getDatabase(application).itemDao()
@@ -124,6 +129,34 @@ class ItemViewModel(application: Application) : AndroidViewModel(application) {
     // 获取指定物品的所有照片URI
     suspend fun getItemPhotoUris(itemId: Int): List<String> {
         return itemDao.getItemById(itemId)?.photoUris ?: emptyList()
+    }
+
+    // 在 ItemViewModel 中
+    fun getFilteredItems(selectedRoom: String, searchQuery: String): Flow<List<Item>> {
+        // 当搜索关键词为"到期"时，创建一个每秒发射当前时间的 flow
+        val timeFlow = if (searchQuery.trim() == "到期") {
+            flow {
+                while (true) {
+                    emit(System.currentTimeMillis())
+                    delay(1000L)
+                }
+            }
+        } else {
+            // 非“到期”情况，只需要发射一次无关时间的值
+            flowOf(0L)
+        }
+        return combine(allItems, timeFlow) { items, currentTime ->
+            val baseList = if (selectedRoom == "全部") items else items.filter { it.room == selectedRoom }
+            if (searchQuery.trim() == "到期") {
+                baseList.filter { item ->
+                    item.expirationDate != null && item.reminderDays != null &&
+                            item.expirationDate > currentTime &&
+                            (item.expirationDate - currentTime) <= item.reminderDays * 24 * 60 * 60 * 1000
+                }
+            } else {
+                baseList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+            }
+        }.flowOn(Dispatchers.Default)
     }
 }
 

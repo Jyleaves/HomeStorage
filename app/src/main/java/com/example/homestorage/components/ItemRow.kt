@@ -80,6 +80,15 @@ fun ItemRow(
         )
     }
 
+    // 缓存位置字符串，避免重复计算
+    val location by remember(item.room, item.container, item.subContainer, item.thirdContainer) {
+        mutableStateOf(
+            listOf(item.room, item.container, item.subContainer, item.thirdContainer)
+                .filter { !it.isNullOrEmpty() }
+                .joinToString(" - ")
+        )
+    }
+
     if (isSelectionMode) {
         // 将复选框放置在左侧，并且不与物品的背景混合
         Row(
@@ -168,12 +177,6 @@ fun ItemRow(
                                         style = MaterialTheme.typography.titleMedium,
                                         maxLines = 1
                                     )
-                                    val location = listOf(
-                                        item.room,
-                                        item.container,
-                                        item.subContainer,
-                                        item.thirdContainer
-                                    ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
                                     Text(
                                         text = "位置: $location",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -260,12 +263,6 @@ fun ItemRow(
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1
                                 )
-                                val location = listOf(
-                                    item.room,
-                                    item.container,
-                                    item.subContainer,
-                                    item.thirdContainer
-                                ).filter { !it.isNullOrEmpty() }.joinToString(" - ")
                                 Text(
                                     text = "位置: $location",
                                     style = MaterialTheme.typography.bodyMedium,

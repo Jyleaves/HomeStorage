@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.google.accompanist.pager)
 
     implementation(libs.jetbrains.kotlinx.serialization.json)
+    implementation(libs.androidx.datastore.preferences)
 
     // 测试依赖
     testImplementation(libs.junit)

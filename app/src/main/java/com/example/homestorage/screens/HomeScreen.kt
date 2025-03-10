@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -35,12 +36,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.homestorage.components.ContainerCard
+import com.example.homestorage.components.ItemPhotoCard
 import com.example.homestorage.navigation.Screen
 import com.example.homestorage.viewmodel.ItemViewModel
 import com.example.homestorage.viewmodel.RoomViewModel
 import com.example.homestorage.viewmodel.ContainerViewModel
 import com.example.homestorage.data.ContainerEntity
 import com.example.homestorage.components.ItemRow
+import com.example.homestorage.components.ItemViewMode
+import com.example.homestorage.components.ItemViewToggle
 import com.example.homestorage.data.Item
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -52,7 +56,6 @@ fun HomeScreen(
     roomViewModel: RoomViewModel = viewModel(),
     containerViewModel: ContainerViewModel = viewModel()
 ) {
-    val items = itemViewModel.allItems.collectAsState().value
     val rooms = roomViewModel.allRooms.collectAsState(initial = emptyList()).value
 
     // 使用 rememberSaveable 保留状态
@@ -127,16 +130,27 @@ fun HomeScreen(
         }
     }
 
+    // 直接从 ViewModel 收集过滤后的物品列表
+    val filteredItems by itemViewModel.getFilteredItems(selectedRoom, searchQuery)
+        .collectAsState(initial = emptyList())
+
+    // 记录物品显示视图模式（列表或网格），默认列表
+    var itemViewMode by remember { mutableStateOf(ItemViewMode.LIST) }
+
     Scaffold(
         topBar = {
+            // 默认导航栏
             TopAppBar(
                 title = { Text("家庭物品归类整理", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { navController.navigate(Screen.ExportImport.route) }) {
                         Icon(Icons.Default.ImportExport, contentDescription = "导入/导出")
                     }
+                    // 在导出按钮旁添加视图切换按钮
+                    ItemViewToggle(onViewModeChange = { itemViewMode = it })
                 }
             )
+            // 当处于多选状态时显示第二个导航栏
             if (isSelectionMode) {
                 TopAppBar(
                     title = { Text("已选择${selectedItems.size}项") },
@@ -266,20 +280,7 @@ fun HomeScreen(
 
                 // ============== 显示内容 ==============
                 if (displayMode == "所有物品") {
-                    // 根据房间过滤，再按搜索关键字过滤
-                    val baseList = if (selectedRoom == "全部") items else items.filter { it.room == selectedRoom }
-                    val displayedItems = if (searchQuery.trim() == "到期") {
-                        val currentTime = System.currentTimeMillis()
-                        baseList.filter { item ->
-                            item.expirationDate != null && item.reminderDays != null &&
-                                    item.expirationDate > currentTime &&
-                                    (item.expirationDate - currentTime) <= item.reminderDays * 24 * 60 * 60 * 1000
-                        }
-                    } else {
-                        baseList.filter { it.name.contains(searchQuery, ignoreCase = true) }
-                    }
-
-                    if (displayedItems.isEmpty()) {
+                    if (filteredItems.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -289,41 +290,64 @@ fun HomeScreen(
                             Text("暂无物品，点击右下角添加")
                         }
                     } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            contentPadding = PaddingValues(bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(displayedItems, key = { it.id }) { item ->
-                                ItemRow(
-                                    item = item,
-                                    isSelected = selectedItems.contains(item),
-                                    isSelectionMode = isSelectionMode,
-                                    onClick = { onClick(item) },
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            selectedLocation = item.getFullLocation() // 需要给Item添加获取完整位置的方法
-                                            isSelectionMode = true
-                                        }
-                                        // 判断位置是否一致
-                                        if (item.getFullLocation() == selectedLocation) {
-                                            if (selectedItems.contains(item)) {
-                                                selectedItems.remove(item)
-                                            } else {
-                                                selectedItems.add(item)
+                        // 根据 itemViewMode 显示列表或网格视图
+                        if (itemViewMode == ItemViewMode.LIST) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp),
+                                contentPadding = PaddingValues(bottom = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredItems, key = { it.id }) { item ->
+                                    // 保留原有 ItemRow 行为，包括多选和长按
+                                    ItemRow(
+                                        item = item,
+                                        isSelected = selectedItems.contains(item),
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = { onClick(item) },
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                selectedLocation = item.getFullLocation()
+                                                isSelectionMode = true
                                             }
-                                            if (selectedItems.isEmpty()) isSelectionMode = false
+                                            if (item.getFullLocation() == selectedLocation) {
+                                                if (selectedItems.contains(item)) {
+                                                    selectedItems.remove(item)
+                                                } else {
+                                                    selectedItems.add(item)
+                                                }
+                                                if (selectedItems.isEmpty()) isSelectionMode = false
+                                            }
+                                        },
+                                        onDelete = {
+                                            itemViewModel.delete(item)
+                                            itemViewModel.allItems.value.forEach {
+                                                Log.d("ItemViewModel", "Existing item id: ${it.id}")
+                                            }
                                         }
-                                    },
-                                    onDelete = {
-                                        itemViewModel.delete(item)
-                                        itemViewModel.allItems.value.forEach {
-                                            Log.d("ItemViewModel", "Existing item id: ${it.id}")
+                                    )
+                                }
+                            }
+                        } else {
+                            // 网格模式：一行显示 4 个物品，仅展示物品照片（使用 ItemPhotoCard）
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(4),
+                                contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredItems, key = { it.id }) { item ->
+                                    ItemPhotoCard(item = item, onClick = {
+                                        // 点击后同样跳转到物品详情编辑页面
+                                        navController.navigate(
+                                            Screen.ItemForm.createRoute(item.id)
+                                        ) {
+                                            launchSingleTop = true
+                                            popUpTo(Screen.Home.route) { saveState = false }
                                         }
-                                    }
-                                )
+                                    })
+                                }
                             }
                         }
                     }
