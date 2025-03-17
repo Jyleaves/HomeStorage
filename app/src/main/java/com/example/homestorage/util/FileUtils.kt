@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
+import androidx.core.net.toUri
 
 fun createImageUri(context: Context): Uri {
     val imagesDir = File(context.getExternalFilesDir(null), "camera_images")
@@ -24,7 +25,7 @@ fun deletePhotoFile(context: Context, uriString: String?) {
     uriString ?: return
 
     try {
-        val uri = Uri.parse(uriString)
+        val uri = uriString.toUri()
         when {
             // 处理应用私有目录文件
             uri.path?.startsWith(context.getExternalFilesDir(null)?.path ?: "") == true -> {

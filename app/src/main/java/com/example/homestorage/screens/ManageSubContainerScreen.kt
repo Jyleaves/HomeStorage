@@ -4,11 +4,14 @@ import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -23,6 +27,7 @@ import com.example.homestorage.data.SubContainerEntity
 import com.example.homestorage.viewmodel.ItemViewModel
 import com.example.homestorage.viewmodel.SubContainerViewModel
 import com.example.homestorage.viewmodel.ThirdContainerViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
@@ -46,7 +51,8 @@ fun ManageSubContainerScreen(
     // 定义方法重新获取二级容器数据
     fun fetchSubContainers() {
         coroutineScope.launch {
-            subContainerEntities = subContainerViewModel.getSubContainers(room, container)
+            subContainerEntities = subContainerViewModel
+                .getSubContainers(room, container)
                 .firstOrNull() ?: emptyList()
         }
     }
@@ -62,6 +68,7 @@ fun ManageSubContainerScreen(
             selectedSubContainer = subContainerNames.first()
         }
     }
+
     // 用于编辑时显示的二级容器名称
     var newSubContainerName by remember { mutableStateOf(selectedSubContainer) }
     LaunchedEffect(selectedSubContainer) {
@@ -83,6 +90,8 @@ fun ManageSubContainerScreen(
         container = container,
         subContainer = selectedSubContainer
     ).collectAsState(initial = emptyList())
+
+    // 每次切换选中的二级容器或数据库数据更新时，重置thirdContainerList
     LaunchedEffect(selectedSubContainer, thirdContainersState) {
         thirdContainerList.clear()
         thirdContainerList.addAll(thirdContainersState.map { it.thirdContainerName })
@@ -102,11 +111,67 @@ fun ManageSubContainerScreen(
                             contentDescription = "返回"
                         )
                     }
+                },
+                // 将「保存」按钮移到右上角，并加上保存图标
+                actions = {
+                    TextButton(
+                        onClick = {
+                            // 点击保存
+                            if (selectedSubContainer.isNotBlank() && newSubContainerName.isNotBlank()) {
+                                coroutineScope.launch {
+                                    // 若名称有变，则更新选中记录
+                                    if (selectedSubContainer != newSubContainerName) {
+                                        subContainerViewModel.updateSubContainer(
+                                            room = room,
+                                            container = container,
+                                            oldSubContainer = selectedSubContainer,
+                                            newSubContainer = newSubContainerName
+                                        )
+                                        // 同步更新 Item 表中的子容器引用
+                                        itemViewModel.updateSubContainerName(
+                                            room = room,
+                                            container = container,
+                                            oldSubContainer = selectedSubContainer,
+                                            newSubContainer = newSubContainerName
+                                        )
+                                        // 同步修改当前选中
+                                        selectedSubContainer = newSubContainerName
+                                    }
+
+                                    // 更新是否需要三级容器
+                                    subContainerViewModel.updateHasThirdContainer(
+                                        room = room,
+                                        containerName = container,
+                                        subContainerName = newSubContainerName,
+                                        hasThirdContainer = needThirdLevel
+                                    )
+
+                                    // 若需要三级容器，则更新对应数据
+                                    if (needThirdLevel) {
+                                        thirdContainerViewModel.insertOrUpdateThirdContainers(
+                                            room = room,
+                                            container = container,
+                                            subContainer = newSubContainerName,
+                                            thirdContainers = thirdContainerList.toList()
+                                        )
+                                    }
+
+                                    Toast.makeText(context, "保存成功", Toast.LENGTH_SHORT).show()
+                                    // 保存后刷新二级容器数据
+                                    fetchSubContainers()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = "保存")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("保存")
+                    }
                 }
             )
         }
     ) { innerPadding ->
-        // 使用 Surface 捕捉空白处点击以收起键盘
+        // 点击空白处收起键盘
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -115,121 +180,160 @@ fun ManageSubContainerScreen(
                     detectTapGestures(onTap = { focusManager.clearFocus() })
                 }
         ) {
-            // 整体分为上下两部分：上半部分为表单卡片，下半部分为“保存”按钮
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 16.dp),   // 给顶部一点空白
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // ========== 上半部分：表单区域 ==========
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // 1) 上方固定不动的「二级容器设置」卡片
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),  // 左右留白
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    // 卡片：二级容器设置
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "二级容器设置",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            ExposedDropdownMenuBox(
-                                expanded = subDropdownExpanded,
-                                onExpandedChange = { subDropdownExpanded = it },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                OutlinedTextField(
-                                    value = selectedSubContainer,
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("选择二级容器") },
-                                    trailingIcon = {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = subDropdownExpanded)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
-                                        .clickable { subDropdownExpanded = !subDropdownExpanded }
-                                )
-                                ExposedDropdownMenu(
-                                    expanded = subDropdownExpanded,
-                                    onDismissRequest = { subDropdownExpanded = false }
-                                ) {
-                                    subContainerNames.forEach { name ->
-                                        DropdownMenuItem(
-                                            text = { Text(name) },
-                                            onClick = {
-                                                selectedSubContainer = name
-                                                newSubContainerName = name // 同步更新编辑框显示
-                                                subDropdownExpanded = false
-                                            }
-                                        )
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "二级容器设置",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 下拉菜单选择二级容器
+                        ExposedDropdownMenuBox(
+                            expanded = subDropdownExpanded,
+                            onExpandedChange = { subDropdownExpanded = it },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            OutlinedTextField(
+                                value = selectedSubContainer,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("选择二级容器") },
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(
+                                        expanded = subDropdownExpanded
+                                    )
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(
+                                        MenuAnchorType.PrimaryNotEditable,
+                                        enabled = true
+                                    )
+                                    .clickable {
+                                        subDropdownExpanded = !subDropdownExpanded
                                     }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = subDropdownExpanded,
+                                onDismissRequest = { subDropdownExpanded = false }
+                            ) {
+                                subContainerNames.forEach { name ->
+                                    DropdownMenuItem(
+                                        text = { Text(name) },
+                                        onClick = {
+                                            selectedSubContainer = name
+                                            newSubContainerName = name
+                                            subDropdownExpanded = false
+                                        }
+                                    )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = newSubContainerName,
-                                onValueChange = { newSubContainerName = it },
-                                label = { Text("修改二级容器名称") },
-                                modifier = Modifier.fillMaxWidth()
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = newSubContainerName,
+                            onValueChange = { newSubContainerName = it },
+                            label = { Text("修改二级容器名称") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = needThirdLevel,
+                                onCheckedChange = { needThirdLevel = it }
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = needThirdLevel,
-                                    onCheckedChange = { needThirdLevel = it }
-                                )
-                                Text("需要三级容器")
-                            }
+                            Text("需要三级容器")
                         }
                     }
-                    // 卡片：三级容器管理（仅在需要时显示）
-                    if (needThirdLevel) {
+                }
+
+                // 2) 若需要三级容器，则显示中间卡片：三级容器管理
+                if (needThirdLevel) {
+                    val scrollState = rememberScrollState()
+
+                    // 用 Box + weight(1f) 让这张卡片占据下方剩余空间
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 16.dp) // 在底部留些空白，让界面更美观
+                    ) {
                         ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxSize(),
                             shape = MaterialTheme.shapes.medium
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp)
+                            ) {
                                 Text(
                                     text = "三级容器管理",
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                thirdContainerList.forEachIndexed { index, thirdName ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        OutlinedTextField(
-                                            value = thirdName,
-                                            onValueChange = { newValue ->
-                                                thirdContainerList[index] = newValue
-                                            },
-                                            label = { Text("三级容器 ${index + 1}") },
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false)
-                                        )
-                                        IconButton(
-                                            onClick = { thirdContainerList.removeAt(index) }
+
+                                // 让「列表」可滚动
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .verticalScroll(scrollState),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    thirdContainerList.forEachIndexed { index, thirdName ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "删除"
+                                            OutlinedTextField(
+                                                value = thirdName,
+                                                onValueChange = { newValue ->
+                                                    thirdContainerList[index] = newValue
+                                                },
+                                                label = { Text("三级容器 ${index + 1}") },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(
+                                                    capitalization = KeyboardCapitalization.None,
+                                                    autoCorrectEnabled = false
+                                                )
                                             )
+                                            IconButton(
+                                                onClick = { thirdContainerList.removeAt(index) }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "删除"
+                                                )
+                                            }
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
                                 }
+
+                                // 点击「添加」后自动滚动到底部
                                 OutlinedButton(
-                                    onClick = { thirdContainerList.add("") },
-                                    modifier = Modifier.align(Alignment.End)
+                                    onClick = {
+                                        thirdContainerList.add("")
+                                        coroutineScope.launch {
+                                            delay(50)
+                                            scrollState.animateScrollTo(scrollState.maxValue)
+                                        }
+                                    },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = "添加")
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -238,53 +342,6 @@ fun ManageSubContainerScreen(
                             }
                         }
                     }
-                }
-                // ========== 底部“保存”按钮 ==========
-                Button(
-                    onClick = {
-                        if (selectedSubContainer.isNotBlank() && newSubContainerName.isNotBlank()) {
-                            coroutineScope.launch {
-                                // 若名称有变，则更新选中记录
-                                if (selectedSubContainer != newSubContainerName) {
-                                    subContainerViewModel.updateSubContainer(
-                                        room = room,
-                                        container = container,
-                                        oldSubContainer = selectedSubContainer,
-                                        newSubContainer = newSubContainerName
-                                    )
-                                    itemViewModel.updateSubContainerName(
-                                        room = room,
-                                        container = container,
-                                        oldSubContainer = selectedSubContainer,
-                                        newSubContainer = newSubContainerName
-                                    )
-                                    selectedSubContainer = newSubContainerName
-                                }
-                                // 更新是否支持三级容器状态
-                                subContainerViewModel.updateHasThirdContainer(
-                                    room = room,
-                                    containerName = container,
-                                    subContainerName = newSubContainerName,
-                                    hasThirdContainer = needThirdLevel
-                                )
-                                // 若需要三级容器，则更新对应数据
-                                if (needThirdLevel) {
-                                    thirdContainerViewModel.insertOrUpdateThirdContainers(
-                                        room = room,
-                                        container = container,
-                                        subContainer = newSubContainerName,
-                                        thirdContainers = thirdContainerList.toList()
-                                    )
-                                }
-                                Toast.makeText(context, "保存成功", Toast.LENGTH_SHORT).show()
-                                // 保存后重新刷新数据（页面不退出）
-                                fetchSubContainers()
-                            }
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("保存")
                 }
             }
         }

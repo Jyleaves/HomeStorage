@@ -1,12 +1,14 @@
-// AddContainer.kt
 package com.example.homestorage.screens
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +22,9 @@ import com.example.homestorage.navigation.Screen
 import com.example.homestorage.viewmodel.ContainerViewModel
 import com.example.homestorage.viewmodel.ItemViewModel
 import com.example.homestorage.viewmodel.SubContainerViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,26 +36,25 @@ fun AddContainerScreen(
     itemViewModel: ItemViewModel = viewModel(),
     subContainerViewModel: SubContainerViewModel = viewModel()
 ) {
-    // 从数据库中获取容器数据（用于编辑模式）
+    // ========== 1) 读取容器信息，确定是否编辑模式 ==========
     val existingContainer = containerViewModel
         .getContainerByRoomAndName(defaultRoom, containerNameToEdit)
         .collectAsState(initial = null).value
-
     val isEditMode = (existingContainer != null)
 
-    // 容器名称和是否有二级容器状态
+    // ========== 2) 相关状态 ==========
     val containerNameState = remember { mutableStateOf("") }
     val hasSubContainerState = remember { mutableStateOf(false) }
-    // 动态二级容器名称列表
     val subContainerList = remember { mutableStateListOf<String>() }
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
 
-    // 当查询到数据库中的容器后，填充状态（编辑模式）
+    // 编辑模式下，填充已有数据
     LaunchedEffect(existingContainer) {
         if (existingContainer != null) {
             containerNameState.value = existingContainer.name
             hasSubContainerState.value = existingContainer.hasSubContainer
             if (existingContainer.hasSubContainer) {
-                // 从二级容器表中加载数据
                 val existingSubs = subContainerViewModel
                     .getSubContainers(defaultRoom, existingContainer.name)
                     .firstOrNull() ?: emptyList()
@@ -61,8 +64,7 @@ fun AddContainerScreen(
         }
     }
 
-    val focusManager = LocalFocusManager.current
-
+    // ========== 3) Scaffold：将「保存」按钮放到TopAppBar的actions里 ==========
     Scaffold(
         topBar = {
             TopAppBar(
@@ -76,11 +78,73 @@ fun AddContainerScreen(
                             contentDescription = "返回"
                         )
                     }
+                },
+                actions = {
+                    // 将「保存」按钮移到右上角
+                    TextButton(
+                        onClick = {
+                            val containerName = containerNameState.value.trim()
+                            val hasSubContainer = hasSubContainerState.value
+                            if (containerName.isNotBlank()) {
+                                if (isEditMode) {
+                                    // 编辑模式：更新容器 & 二级容器
+                                    val oldName = existingContainer.name
+                                    containerViewModel.updateContainer(
+                                        room = defaultRoom,
+                                        oldName = oldName,
+                                        newName = containerName,
+                                        newHasSubContainer = hasSubContainer
+                                    )
+                                    subContainerViewModel.updateSubContainers(
+                                        room = defaultRoom,
+                                        oldContainerName = oldName,
+                                        newContainerName = containerName,
+                                        subContainers = subContainerList.toList()
+                                    )
+                                    if (oldName != containerName) {
+                                        itemViewModel.updateItemsForContainerChange(
+                                            room = defaultRoom,
+                                            oldContainerName = oldName,
+                                            newContainerName = containerName
+                                        )
+                                        navController.navigate(
+                                            Screen.ContainerScreen.createRoute(defaultRoom, containerName)
+                                        ) {
+                                            popUpTo("container_screen/$defaultRoom/$oldName") {
+                                                inclusive = true
+                                            }
+                                        }
+                                    } else {
+                                        navController.popBackStack()
+                                    }
+                                } else {
+                                    // 新增模式
+                                    containerViewModel.insertContainer(
+                                        defaultRoom,
+                                        containerName,
+                                        hasSubContainer
+                                    )
+                                    if (hasSubContainer) {
+                                        subContainerViewModel.insertOrUpdateSubContainers(
+                                            room = defaultRoom,
+                                            container = containerName,
+                                            subContainers = subContainerList.toList()
+                                        )
+                                    }
+                                    navController.popBackStack()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = "保存")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("保存")
+                    }
                 }
             )
         }
     ) { innerPadding ->
-        // 顶层容器，监听点击空白处收起键盘
+        // 监听点击空白处收起键盘
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -89,32 +153,28 @@ fun AddContainerScreen(
                     detectTapGestures(onTap = { focusManager.clearFocus() })
                 }
         ) {
-            // 整体分为上下两部分：上方是表单，底部是“保存”按钮
+            // ========== 4) 两张卡片：第一张容器设置，第二张二级容器管理 ==========
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 16.dp),    // 顶部留一点空白
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // ========== 上半部分：卡片中的输入区域 ==========
+                // ----- 第一张卡片：容器名称 & 是否需要二级容器 -----
                 ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // 显示房间信息
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "房间：$defaultRoom",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        // 容器名称
                         OutlinedTextField(
                             value = containerNameState.value,
                             onValueChange = { containerNameState.value = it },
@@ -122,8 +182,8 @@ fun AddContainerScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        // 是否有二级容器
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = hasSubContainerState.value,
@@ -131,110 +191,88 @@ fun AddContainerScreen(
                             )
                             Text("需要二级容器")
                         }
-
-                        // 如果选中“有二级容器”，显示动态输入区域
-                        if (hasSubContainerState.value) {
-                            // 用一个小的标题来提示分区
-                            Text(
-                                text = "二级容器列表",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            // 列表
-                            subContainerList.forEachIndexed { index, subContainerName ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    OutlinedTextField(
-                                        value = subContainerName,
-                                        onValueChange = { newValue ->
-                                            subContainerList[index] = newValue
-                                        },
-                                        label = { Text("二级容器 ${index + 1}") },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    IconButton(
-                                        onClick = { subContainerList.removeAt(index) }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "删除"
-                                        )
-                                    }
-                                }
-                            }
-                            // 添加二级容器按钮
-                            OutlinedButton(
-                                onClick = { subContainerList.add("") },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "添加")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("添加二级容器")
-                            }
-                        }
                     }
                 }
 
-                // ========== 底部“保存”按钮 ==========
-                Button(
-                    onClick = {
-                        val containerName = containerNameState.value.trim()
-                        val hasSubContainer = hasSubContainerState.value
-                        if (containerName.isNotBlank()) {
-                            if (isEditMode && existingContainer != null) {
-                                val oldName = existingContainer.name
-                                // 更新容器信息
-                                containerViewModel.updateContainer(
-                                    room = defaultRoom,
-                                    oldName = oldName,
-                                    newName = containerName,
-                                    newHasSubContainer = hasSubContainer
+                // ----- 第二张卡片：二级容器管理（可局部滚动，占满下方剩余空间） -----
+                if (hasSubContainerState.value) {
+                    val scrollState = rememberScrollState()
+
+                    // 使用 weight(1f) 让它占满下方剩余空间
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)                         // 占用剩余高度
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 16.dp)             // 在底部留空白，更美观
+                    ) {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "二级容器管理",
+                                    style = MaterialTheme.typography.titleMedium
                                 )
-                                // 更新二级容器数据
-                                subContainerViewModel.updateSubContainers(
-                                    room = defaultRoom,
-                                    oldContainerName = oldName,
-                                    newContainerName = containerName,
-                                    subContainers = subContainerList.toList()
-                                )
-                                if (oldName != containerName) {
-                                    itemViewModel.updateItemsForContainerChange(
-                                        room = defaultRoom,
-                                        oldContainerName = oldName,
-                                        newContainerName = containerName
-                                    )
-                                    navController.navigate(
-                                        Screen.ContainerScreen.createRoute(defaultRoom, containerName)
-                                    ) {
-                                        popUpTo("container_screen/$defaultRoom/$oldName") { inclusive = true }
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 列表可滚动
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .verticalScroll(scrollState),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    subContainerList.forEachIndexed { index, subContainerName ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            OutlinedTextField(
+                                                value = subContainerName,
+                                                onValueChange = { newValue ->
+                                                    subContainerList[index] = newValue
+                                                },
+                                                label = { Text("二级容器 ${index + 1}") },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    subContainerList.removeAt(index)
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "删除"
+                                                )
+                                            }
+                                        }
                                     }
-                                } else {
-                                    navController.popBackStack()
                                 }
-                            } else {
-                                // 插入新容器
-                                containerViewModel.insertContainer(
-                                    defaultRoom,
-                                    containerName,
-                                    hasSubContainer
-                                )
-                                // 插入对应的二级容器数据（如果有）
-                                if (hasSubContainer) {
-                                    subContainerViewModel.insertOrUpdateSubContainers(
-                                        room = defaultRoom,
-                                        container = containerName,
-                                        subContainers = subContainerList.toList()
-                                    )
+
+                                // 添加按钮：点击后自动滚动到底部
+                                OutlinedButton(
+                                    onClick = {
+                                        subContainerList.add("")
+                                        coroutineScope.launch {
+                                            delay(50)
+                                            scrollState.animateScrollTo(scrollState.maxValue)
+                                        }
+                                    },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "添加")
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("添加二级容器")
                                 }
-                                navController.popBackStack()
                             }
                         }
-                    },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("保存")
+                    }
                 }
             }
         }
